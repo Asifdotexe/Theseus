@@ -5,12 +5,13 @@ Collects the 12 blames per year for target repository
 
 import json
 import os
+import shutil
 import subprocess
 from collections import defaultdict
 from datetime import datetime
 
 
-def _run_command(cmd: list[str], cwd: str) -> str:
+def _run_command(cmd: list[str], cwd: str = None) -> str:
     """
     Execute a shell command and return it's standard output
 
@@ -34,6 +35,18 @@ def _run_command(cmd: list[str], cwd: str) -> str:
         raise RuntimeError(
             f"Command '{' '.join(cmd)}' failed with exit code {e.returncode}"
         ) from e
+
+
+def clone_repository(repo_slug: str, clone_dir: str) -> None:
+    """
+    Dynamically clone a GitHub repository given its owner/name slug.
+
+    :param repo_slug: The GitHub repository identifier (e.g., 'facebook/react').
+    :param clone_dir: The local directory where the repository should be cloned.
+    """
+    print(f"Cloning {repo_slug} into {clone_dir}...")
+    repo_url = f"https://github.com/{repo_slug}.git"
+    _run_command(["git", "clone", repo_url, clone_dir])
 
 
 def get_monthly_snapshots(repo_path: str) -> list[tuple[str, str]]:
@@ -145,13 +158,22 @@ def load_existing_state(json_fname: str) -> list[dict]:
 
 
 # TODO: Make the main function to tie everything together
-def generate_theseus_data(target_repo_path: str, output_json_fname: str) -> None:
+def process_repository(repo_slug: str, data_dir: str) -> None:
     """
-    Orchestrate the extract of Ship of Theseus code persistence data
+    Orchestrate the extraction of Ship of Theseus code persistence data
     using an incremental load strategy by just processing the delta
+
+    :param repo_slug: The GitHub repository identifier (e.g., 'facebook/react').
+    :param data_dir: Path where the resulting JSON data will be saved.
     """
-    print(f"Starting analysis on {target_repo_path}...")
+    repo_name = repo_slug.split("/")[-1]
+    temp_repo_path = f"./temp_workdir_{repo_name}"
+    output_json_path = os.path.join(data_dir, f"{repo_name}_data.json")
     # System design thinking is that we don't want to load existing state and recalculate redundantly
+    #
+    # We clone the repository dynamically just to read it. By pulling the codebase
+    # ourselves instead of relying on GitHub Actions checkout steps, we can iterate
+    # through 10, 50, or 100 repositories entirely within Python.
     #
     # Let's say we have a 10-year old repository. Running git blame on every file for every single month
     # of it's 120 month long history would take hours and it would blow past the GitHub Action's free tier limit.
@@ -159,57 +181,76 @@ def generate_theseus_data(target_repo_path: str, output_json_fname: str) -> None
     #
     # This reduces a 30-minute monthly compute job down to about 5 seconds,
     # ensuring that I don't have to pay for keeping this project alive lmao.
-    historical_data = load_existing_state(output_json_fname)
-    processed_periods = set(item["snapshot_date"] for item in historical_data)
+    try:
+        if not os.path.exists(temp_repo_path):
+            clone_repository(repo_slug, temp_repo_path)
+        else:
+            print(f"Repository {repo_name} already exists locally. Fetching latest...")
+            _run_command(["git", "fetch", "--all"], cwd=temp_repo_path)
+            _run_command(["git", "checkout", "main"], cwd=temp_repo_path)
+            _run_command(["git", "pull"], cwd=temp_repo_path)
 
-    all_snapshots = get_monthly_snapshots(target_repo_path)
-    new_snapshots = []
+        historical_data = load_existing_state(output_json_path)
+        processed_periods = set(item["snapshot_date"] for item in historical_data)
 
-    for period, commit in all_snapshots:
-        if period in processed_periods:
-            # We already know that the repository looked like this month. Skip it.
-            continue
+        all_snapshots = get_monthly_snapshots(temp_repo_path)
+        new_data = []
 
-        print(f"Calculating DELTA for new period: {period} (Commit: {commit[:7]})...")
-        distribution = analyze_snapshots(target_repo_path, commit)
+        for period, commit in all_snapshots:
+            if period in processed_periods:
+                # We already know what the repository looked like in this month. Skip it.
+                continue
 
-        new_snapshots.append(
-            {
-                "snapshot_date": period,
-                "total_lines": sum(distribution.values()),
-                "composition": distribution,
-            }
-        )
+            print(
+                f"[{repo_name}] Calculating DELTA for new period: {period} (Commit: {commit[:7]})..."
+            )
+            distribution = analyze_snapshots(temp_repo_path, commit)
 
-    if not new_snapshots:
-        print("No new months to process. Repository data is already up-to-date.")
-        return
+            new_data.append(
+                {
+                    "snapshot_date": period,
+                    "total_lines": sum(distribution.values()),
+                    "composition": distribution,
+                }
+            )
 
-    # Combine the historical data with the newly processed delta
-    final_dataset = historical_data + new_snapshots
+        if not new_data:
+            print(
+                f"[{repo_name}] No new months to process. Data is already up to date!"
+            )
+        else:
+            final_dataset = historical_data + new_data
+            final_dataset.sort(key=lambda x: x["snapshot_date"])
 
-    # Ensure chronological order to prevent rendering glitches on the frontend
-    final_dataset.sort(key=lambda x: x["snapshot_date"])
+            with open(output_json_path, "w") as f:
+                json.dump(final_dataset, f, indent=4)
 
-    # Polite cleanup: return the repo to its intial state
-    _run_command(["git", "checkout", "-"], cwd=target_repo_path)
+            print(
+                f"[{repo_name}] Delta analysis complete. Appended {len(new_data)} new months."
+            )
 
-    with open(output_json_fname, "w", encoding="utf-8") as f:
-        json.dump(final_dataset, f, indent=4)
+    finally:
+        # Polite cleanup: Remove the gigantic source code folders we downloaded.
+        # We only want to keep the JSON data!
+        if os.path.exists(temp_repo_path):
+            print(f"Cleaning up temporary directory: {temp_repo_path}")
+            # Note: Windows might need special handling for git files, but this works on Linux/Mac (GitHub Actions)
+            shutil.rmtree(temp_repo_path, ignore_errors=True)
 
-    print(
-        f"Delta analysis completed. Appended {len(new_snapshots)} new months to the dataset."
-    )
 
-
-# FIXME: Make this into argparse or list for scalability
 if __name__ == "__main__":
-    TARGET_REPO_PATH = "C:\\Users\\sayye\\OneDrive\\Documents\\GitHub\\portfolio"
-    OUTPUT_JSON_FNAME = "./data/theseus_data.json"
+    DATA_OUTPUT_DIR = "./data"
+    os.makedirs(DATA_OUTPUT_DIR, exist_ok=True)
 
-    os.makedirs(os.path.dirname(OUTPUT_JSON_FNAME), exist_ok=True)
+    # ---------------------------------------------------------
+    # The Case Studies: Add any public repository you want here!
+    # ---------------------------------------------------------
+    TARGETS = [
+        "facebook/react",  # The modern web standard
+        "vuejs/vue",  # A fantastic comparison to React
+        "d3/d3",  # The data-viz giant
+    ]
 
-    if os.path.exists(TARGET_REPO_PATH):
-        generate_theseus_data(TARGET_REPO_PATH, OUTPUT_JSON_FNAME)
-    else:
-        print(f"Target repository not found: {TARGET_REPO_PATH}")
+    for target in TARGETS:
+        print(f"\n{'=' * 50}\nStarting analysis pipeline for: {target}\n{'=' * 50}")
+        process_repository(target, DATA_OUTPUT_DIR)
