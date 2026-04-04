@@ -7,20 +7,20 @@ repos:
       - id: check-yaml
       - id: check-added-large-files
 
-  - repo: https://github.com/psf/black
-    rev: 25.9.0
+  - repo: local
     hooks:
       - id: black
+        name: black
+        entry: poetry run black
+        language: system
+        types: [python]
 
-  - repo: https://github.com/PyCQA/isort
-    rev: 6.1.0
-    hooks:
       - id: isort
         name: isort (python)
+        entry: poetry run isort
+        language: system
+        types: [python]
 
-  - repo: https://github.com/pylint-dev/pylint
-    rev: v3.3.8
-    hooks:
       - id: pylint
         name: pylint
         entry: poetry run pylint
