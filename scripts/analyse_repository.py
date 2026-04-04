@@ -3,6 +3,7 @@ This script is reposible for doing the heavy lifting.
 Collects the 12 blames per year for target repository
 """
 
+import concurrent.futures
 import json
 import os
 import shutil
@@ -134,8 +135,21 @@ def _parse_blame_output(blame_output: str) -> dict[str, int]:
     return dict(file_distribution)
 
 
-# FIXME: Optimisation opportunity: use git blame directly on the file list or if the file is larger than 32KB,
-#        batch it into chunks as that the N would be reduced
+def _blame_single_file(repo_path: str, file: str) -> dict[str, int]:
+    """
+    Worker function to run git blame on a single file.
+    Designed to be run concurrently in a ThreadPool.
+    """
+    try:
+        blame_output = _run_command(
+            ["git", "blame", "--line-porcelain", file], cwd=repo_path
+        )
+        return _parse_blame_output(blame_output)
+    except RuntimeError:
+        # Skip files that git blame cannot process (like binaries)
+        return {}
+
+
 @timer
 def analyze_snapshots(repo_path: str, commit_hash: str) -> dict[str, int]:
     """
@@ -151,24 +165,21 @@ def analyze_snapshots(repo_path: str, commit_hash: str) -> dict[str, int]:
 
     age_distribution = defaultdict(int)
 
-    for file in files:
-        file_path = os.path.join(repo_path, file)
-        if not os.path.isfile(file_path):
-            continue
+    valid_files = [f for f in files if os.path.isfile(os.path.join(repo_path, f))]
 
-        try:
-            # --line-porcelain provides machine-readable output including author-time
-            blame_output = _run_command(
-                ["git", "blame", "--line-porcelain", file], cwd=repo_path
-            )
-            file_dist = _parse_blame_output(blame_output)
+    # Use ThreadPoolExecutor to bypass the O(N) sequential subprocess bottleneck.
+    # Subprocess calls release the GIL, making threading highly effective here.
+    max_threads = 20
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
+        future_to_file = {
+            executor.submit(_blame_single_file, repo_path, file): file
+            for file in valid_files
+        }
 
-            # Aggregate the file's age distribution into the snapshot's total
+        for future in concurrent.futures.as_completed(future_to_file):
+            file_dist = future.result()
             for year, count in file_dist.items():
                 age_distribution[year] += count
-        except RuntimeError:
-            # Skip files that git blame cannot process (like binaries)
-            continue
 
     return dict(age_distribution)
 
@@ -276,11 +287,9 @@ if __name__ == "__main__":
     DATA_OUTPUT_DIR = "./data"
     os.makedirs(DATA_OUTPUT_DIR, exist_ok=True)
 
-    # The Case Studies: Start with these three to benchmark.
+    # The Case Studies: Start with these one to benchmark.
     TARGETS = [
-        "facebook/react",  # The modern web standard
-        "vuejs/vue",  # A fantastic comparison to React
-        "d3/d3",  # The data-viz giant
+        "anthropics/claude-code",
     ]
 
     overall_start = time.perf_counter()
