@@ -7,11 +7,31 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from collections import defaultdict
 from datetime import datetime
+from functools import wraps
 
 
-def _run_command(cmd: list[str], cwd: str = None) -> str:
+def timer(func):
+    """
+    A decorator that prints the execution time of the function it wraps.
+    Used for benchmarking sequential vs. concurrent execution optimizations.
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        result = func(*args, **kwargs)
+        end_time = time.perf_counter()
+        execution_time = end_time - start_time
+        print(f"⏱️  [TIMER] '{func.__name__}' executed in {execution_time:.4f} seconds")
+        return result
+
+    return wrapper
+
+
+def _run_command(cmd: list[str], cwd: str | None = None) -> str:
     """
     Execute a shell command and return it's standard output
 
@@ -78,63 +98,76 @@ def get_monthly_snapshots(repo_path: str) -> list[tuple[str, str]]:
     return sorted(snapshots.items(), key=lambda x: x[0])
 
 
+def _parse_blame_output(blame_output: str) -> dict[str, int]:
+    """
+    Parse git blame --line-porcelain output, returning a year -> line count mapping.
+    Extracting this logic reduces nesting and properly handles Git's porcelain format,
+    where 'author-time' is only printed once per commit block, but actual code lines
+    begin with a tab character.
+
+    :param blame_output: The raw output from git blame --line-porcelain
+    :return: A dictionary mapping years to the number of lines changed in that year
+    """
+    file_distribution = defaultdict(int)
+    commit_to_year = {}
+    current_commit = None
+
+    for line in blame_output.splitlines():
+        if line.startswith("\t"):
+            # This is an actual line of code. Attribute it to the year of the current commit.
+            if current_commit and current_commit in commit_to_year:
+                year = commit_to_year[current_commit]
+                file_distribution[year] += 1
+        else:
+            parts = line.split(" ")
+            # Check if the line starts with a 40-char (SHA-1) or 64-char (SHA-256) commit hash
+            if len(parts[0]) in (40, 64):
+                current_commit = parts[0]
+            elif parts[0] == "author-time":
+                try:
+                    timestamp = int(parts[1])
+                    year = datetime.fromtimestamp(timestamp).strftime("%Y")
+                    commit_to_year[current_commit] = year
+                except (ValueError, IndexError):
+                    pass
+
+    return dict(file_distribution)
+
+
 # FIXME: Optimisation opportunity: use git blame directly on the file list or if the file is larger than 32KB,
 #        batch it into chunks as that the N would be reduced
+@timer
 def analyze_snapshots(repo_path: str, commit_hash: str) -> dict[str, int]:
     """
     Analyze the snapshots collected from the repository.
 
     :param repo_path: Path to the repository
     :param commit_hash: Hash of the commit to analyze
-    :return: Dictionary of file age distribution in months
+    :return: Dictionary mapping birth year to line count
     """
-    try:
-        files_output = _run_command(
-            cmd=["git", "ls-tree", "-r", "-z", "--name-only", commit_hash],
-            cwd=repo_path,
-        )
-    except RuntimeError as e:
-        print(f"Failed to list files in repository: {str(e)}")
-        return {}
+    _run_command(["git", "checkout", commit_hash], cwd=repo_path)
+    files_output = _run_command(["git", "ls-files"], cwd=repo_path)
+    files = files_output.splitlines()
 
-    # Split by the null character (because of -z) to handle spaces accurately
-    files = [f for f in files_output.split("\0") if f]
     age_distribution = defaultdict(int)
 
     for file in files:
+        file_path = os.path.join(repo_path, file)
+        if not os.path.isfile(file_path):
+            continue
+
         try:
-            # Blame the file directly at the specific commit in history
-            # The '--' ensure git doesn;t confuse filename with flas
+            # --line-porcelain provides machine-readable output including author-time
             blame_output = _run_command(
-                ["git", "blame", "--line-porcelain", commit_hash, "--", file],
-                cwd=repo_path,
+                ["git", "blame", "--line-porcelain", file], cwd=repo_path
             )
+            file_dist = _parse_blame_output(blame_output)
 
-            commit_to_year = {}
-            current_commit = None
-
-            # A robust state machine to parse Git porcelain format
-            # Porcelain format only prints the 'author-time' once per commit block
-            # so we must remember the year for each commit has we encounter.
-            for line in blame_output.splitlines():
-                if line.startswith("\t"):
-                    if current_commit in commit_to_year:
-                        age_distribution[commit_to_year[current_commit]] += 1
-                else:
-                    parts = line.split(" ")
-                    # A 40 (or 64 for SHA-256) character hash marks the start of a new blame block
-                    if len(parts[0]) in (40, 64):
-                        current_commit = parts[0]
-                    elif parts[0] == "author-time":
-                        try:
-                            timestamp = int(parts[1])
-                            commit_to_year[current_commit] = datetime.fromtimestamp(
-                                timestamp
-                            ).strftime("%Y")
-                        except (ValueError, OverflowError, IndexError):
-                            pass
+            # Aggregate the file's age distribution into the snapshot's total
+            for year, count in file_dist.items():
+                age_distribution[year] += count
         except RuntimeError:
-            # Skip files that git blame cannot process (e.g., binary files)
+            # Skip files that git blame cannot process (like binaries)
             continue
 
     return dict(age_distribution)
@@ -158,6 +191,7 @@ def load_existing_state(json_fname: str) -> list[dict]:
 
 
 # TODO: Make the main function to tie everything together
+@timer
 def process_repository(repo_slug: str, data_dir: str) -> None:
     """
     Orchestrate the extraction of Ship of Theseus code persistence data
@@ -222,7 +256,7 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
             final_dataset = historical_data + new_data
             final_dataset.sort(key=lambda x: x["snapshot_date"])
 
-            with open(output_json_path, "w") as f:
+            with open(output_json_path, "w", encoding="utf-8") as f:
                 json.dump(final_dataset, f, indent=4)
 
             print(
@@ -242,15 +276,18 @@ if __name__ == "__main__":
     DATA_OUTPUT_DIR = "./data"
     os.makedirs(DATA_OUTPUT_DIR, exist_ok=True)
 
-    # ---------------------------------------------------------
-    # The Case Studies: Add any public repository you want here!
-    # ---------------------------------------------------------
+    # The Case Studies: Start with these three to benchmark.
     TARGETS = [
         "facebook/react",  # The modern web standard
         "vuejs/vue",  # A fantastic comparison to React
         "d3/d3",  # The data-viz giant
     ]
 
+    overall_start = time.perf_counter()
     for target in TARGETS:
         print(f"\n{'=' * 50}\nStarting analysis pipeline for: {target}\n{'=' * 50}")
         process_repository(target, DATA_OUTPUT_DIR)
+    overall_end = time.perf_counter()
+    print(
+        f"\n{'=' * 50}\nTOTAL PIPELINE EXECUTION TIME: {overall_end - overall_start:.2f} seconds\n{'=' * 50}"
+    )
