@@ -295,9 +295,7 @@ if __name__ == "__main__":
     os.makedirs(DATA_OUTPUT_DIR, exist_ok=True)
 
     # The Case Studies: Start with this one to benchmark.
-    TARGETS = [
-        "anthropics/claude-code",
-    ]
+    TARGETS = ["anthropics/claude-code", "facebook/react", "langchain-ai/langchain"]
 
     overall_start = time.perf_counter()
     for target in TARGETS:
