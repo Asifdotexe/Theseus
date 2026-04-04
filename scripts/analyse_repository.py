@@ -232,7 +232,12 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
         else:
             print(f"Repository {repo_name} already exists locally. Fetching latest...")
             _run_command(["git", "fetch", "--all"], cwd=temp_repo_path)
-            _run_command(["git", "checkout", "main"], cwd=temp_repo_path)
+            for branch in ["main", "master"]:
+                try:
+                    _run_command(["git", "checkout", branch], cwd=temp_repo_path)
+                    break
+                except RuntimeError:
+                    continue
             _run_command(["git", "pull"], cwd=temp_repo_path)
 
         historical_data = load_existing_state(output_json_path)
