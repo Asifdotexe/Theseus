@@ -9,8 +9,6 @@ import subprocess
 from collections import defaultdict
 from datetime import datetime
 
-# FIXME: The data returns 0 lines of code and no composition
-
 
 def _run_command(cmd: list[str], cwd: str) -> str:
     """
@@ -27,6 +25,8 @@ def _run_command(cmd: list[str], cwd: str) -> str:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
         )
         return result.stdout.strip()
@@ -48,7 +48,7 @@ def get_monthly_snapshots(repo_path: str) -> list[tuple[str, str]]:
         cmd=["git", "log", "--pretty=format:%H|%cI"], cwd=repo_path
     )
 
-    snapshot: dict = {}
+    snapshots: dict = {}
     for line in log_output.splitlines():
         if not line:
             continue
@@ -60,43 +60,66 @@ def get_monthly_snapshots(repo_path: str) -> list[tuple[str, str]]:
         # Git log outputs newest commit first. By assigning to the dictionary,
         # the last commit processed for a month overwrites earlier ones,
         # leaving us with the very first commit of that specific month
-        snapshot[period] = commit_hash
+        snapshots[period] = commit_hash
 
-    return sorted(snapshot.items(), key=lambda x: x[0])
+    return sorted(snapshots.items(), key=lambda x: x[0])
 
 
 # FIXME: Optimisation opportunity: use git blame directly on the file list or if the file is larger than 32KB,
 #        batch it into chunks as that the N would be reduced
-def analyze_snapshots(repo_path: str, commit: str) -> dict[str, int]:
+def analyze_snapshots(repo_path: str, commit_hash: str) -> dict[str, int]:
     """
     Analyze the snapshots collected from the repository.
+
+    :param repo_path: Path to the repository
+    :param commit_hash: Hash of the commit to analyze
+    :return: Dictionary of file age distribution in months
     """
-    # We don't store the return value here because we only care about the side effect.
-    # This command physically alters the file in the directory to match the commit's history
-    # If the command fails, _run_command will raise an exception and halt execution automatically
-    _run_command(cmd=["git", "checkout", commit], cwd=repo_path)
+    try:
+        files_output = _run_command(
+            cmd=["git", "ls-tree", "-r", "-z", "--name-only", commit_hash],
+            cwd=repo_path,
+        )
+    except RuntimeError as e:
+        print(f"Failed to list files in repository: {str(e)}")
+        return {}
 
-    files_output = _run_command(cmd=["git", "ls-files"], cwd=repo_path)
-    files = files_output.splitlines()
-
+    # Split by the null character (because of -z) to handle spaces accurately
+    files = [f for f in files_output.split("\0") if f]
     age_distribution = defaultdict(int)
 
     for file in files:
-        file_path = os.path.join(repo_path, file)
-        if os.path.exists(file_path):
-            continue
-
         try:
-            # '--line-porcelain' provides machine-readable output of blame, including author-time
+            # Blame the file directly at the specific commit in history
+            # The '--' ensure git doesn;t confuse filename with flas
             blame_output = _run_command(
-                cmd=["git", "blame", "--line-porcelain", file], cwd=repo_path
+                ["git", "blame", "--line-porcelain", commit_hash, "--", file],
+                cwd=repo_path,
             )
+
+            commit_to_year = {}
+            current_commit = None
+
+            # A robust state machine to parse Git porcelain format
+            # Porcelain format only prints the 'author-time' once per commit block
+            # so we must remember the year for each commit has we encounter.
             for line in blame_output.splitlines():
-                if line.startswith("author-time "):
-                    timestamp = int(line.split(" ")[1])
-                    birth_year = datetime.fromtimestamp(timestamp).strftime("%Y")
-                    age_distribution[birth_year] += 1
-                    break
+                if line.startswith("\t"):
+                    if current_commit in commit_to_year:
+                        age_distribution[commit_to_year[current_commit]] += 1
+                else:
+                    parts = line.split(" ")
+                    # A 40 (or 64 for SHA-256) character hash marks the start of a new blame block
+                    if len(parts[0]) in (40, 64):
+                        current_commit = parts[0]
+                    elif parts[0] == "author-time":
+                        try:
+                            timestamp = int(parts[1])
+                            commit_to_year[current_commit] = datetime.fromtimestamp(
+                                timestamp
+                            ).strftime("%Y")
+                        except (ValueError, OverflowError, IndexError):
+                            pass
         except RuntimeError:
             # Skip files that git blame cannot process (e.g., binary files)
             continue
@@ -127,6 +150,7 @@ def generate_theseus_data(target_repo_path: str, output_json_fname: str) -> None
     Orchestrate the extract of Ship of Theseus code persistence data
     using an incremental load strategy by just processing the delta
     """
+    print(f"Starting analysis on {target_repo_path}...")
     # System design thinking is that we don't want to load existing state and recalculate redundantly
     #
     # Let's say we have a 10-year old repository. Running git blame on every file for every single month
