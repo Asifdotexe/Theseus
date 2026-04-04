@@ -1,6 +1,6 @@
 """
-This script is reposible for doing the heavy lifting.
-Collects the 12 blames per year for target repository
+This script is responsible for doing the heavy lifting.
+Processes monthly snapshots incrementally to track code age distribution.
 """
 
 import concurrent.futures
