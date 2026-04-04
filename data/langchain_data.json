@@ -1,0 +1,44 @@
+[
+    {
+        "snapshot_date": "2022-12",
+        "total_lines": 15774,
+        "composition": {
+            "2022": 15774
+        }
+    },
+    {
+        "snapshot_date": "2023-03",
+        "total_lines": 90222,
+        "composition": {
+            "2022": 28253,
+            "2023": 61969
+        }
+    },
+    {
+        "snapshot_date": "2023-06",
+        "total_lines": 509660,
+        "composition": {
+            "2023": 487975,
+            "2022": 21681,
+            "2026": 4
+        }
+    },
+    {
+        "snapshot_date": "2023-09",
+        "total_lines": 697569,
+        "composition": {
+            "2023": 681274,
+            "2022": 16291,
+            "2026": 4
+        }
+    },
+    {
+        "snapshot_date": "2023-12",
+        "total_lines": 895902,
+        "composition": {
+            "2023": 881194,
+            "2022": 14704,
+            "2026": 4
+        }
+    }
+]

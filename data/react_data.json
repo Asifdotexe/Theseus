@@ -1,0 +1,131 @@
+[
+    {
+        "snapshot_date": "2013-06",
+        "total_lines": 44058,
+        "composition": {
+            "2013": 44058
+        }
+    },
+    {
+        "snapshot_date": "2013-09",
+        "total_lines": 56640,
+        "composition": {
+            "2013": 56640
+        }
+    },
+    {
+        "snapshot_date": "2013-12",
+        "total_lines": 103418,
+        "composition": {
+            "2013": 103418
+        }
+    },
+    {
+        "snapshot_date": "2014-03",
+        "total_lines": 139132,
+        "composition": {
+            "2014": 14460,
+            "2013": 124672
+        }
+    },
+    {
+        "snapshot_date": "2014-06",
+        "total_lines": 150788,
+        "composition": {
+            "2013": 122748,
+            "2014": 28040
+        }
+    },
+    {
+        "snapshot_date": "2014-09",
+        "total_lines": 164695,
+        "composition": {
+            "2013": 120753,
+            "2014": 43942
+        }
+    },
+    {
+        "snapshot_date": "2014-12",
+        "total_lines": 176099,
+        "composition": {
+            "2013": 115042,
+            "2014": 61057
+        }
+    },
+    {
+        "snapshot_date": "2015-03",
+        "total_lines": 192854,
+        "composition": {
+            "2015": 12814,
+            "2013": 111731,
+            "2014": 68309
+        }
+    },
+    {
+        "snapshot_date": "2015-06",
+        "total_lines": 272822,
+        "composition": {
+            "2015": 99379,
+            "2014": 64525,
+            "2013": 108918
+        }
+    },
+    {
+        "snapshot_date": "2015-09",
+        "total_lines": 285176,
+        "composition": {
+            "2015": 124048,
+            "2014": 61377,
+            "2013": 99751
+        }
+    },
+    {
+        "snapshot_date": "2015-12",
+        "total_lines": 309834,
+        "composition": {
+            "2013": 97720,
+            "2015": 146057,
+            "2014": 66057
+        }
+    },
+    {
+        "snapshot_date": "2016-03",
+        "total_lines": 323735,
+        "composition": {
+            "2015": 152293,
+            "2016": 8454,
+            "2014": 65616,
+            "2013": 97372
+        }
+    },
+    {
+        "snapshot_date": "2016-06",
+        "total_lines": 352278,
+        "composition": {
+            "2013": 92612,
+            "2015": 145240,
+            "2014": 58111,
+            "2016": 56315
+        }
+    },
+    {
+        "snapshot_date": "2016-09",
+        "total_lines": 374264,
+        "composition": {
+            "2016": 97634,
+            "2014": 56984,
+            "2015": 128249,
+            "2013": 91397
+        }
+    },
+    {
+        "snapshot_date": "2016-12",
+        "total_lines": 400419,
+        "composition": {
+            "2013": 87455,
+            "2015": 93943,
+            "2014": 53615,
+            "2016": 165406
+        }
+    }
+]
