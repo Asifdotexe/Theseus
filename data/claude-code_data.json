@@ -1,0 +1,111 @@
+[
+    {
+        "snapshot_date": "2025-02",
+        "total_lines": 315,
+        "composition": {
+            "2025": 315
+        }
+    },
+    {
+        "snapshot_date": "2025-03",
+        "total_lines": 368,
+        "composition": {
+            "2025": 368
+        }
+    },
+    {
+        "snapshot_date": "2025-04",
+        "total_lines": 455,
+        "composition": {
+            "2025": 455
+        }
+    },
+    {
+        "snapshot_date": "2025-05",
+        "total_lines": 756,
+        "composition": {
+            "2025": 756
+        }
+    },
+    {
+        "snapshot_date": "2025-06",
+        "total_lines": 876,
+        "composition": {
+            "2025": 876
+        }
+    },
+    {
+        "snapshot_date": "2025-07",
+        "total_lines": 77387,
+        "composition": {
+            "2025": 77387
+        }
+    },
+    {
+        "snapshot_date": "2025-08",
+        "total_lines": 77900,
+        "composition": {
+            "2025": 77900
+        }
+    },
+    {
+        "snapshot_date": "2025-09",
+        "total_lines": 78823,
+        "composition": {
+            "2025": 78823
+        }
+    },
+    {
+        "snapshot_date": "2025-10",
+        "total_lines": 56350,
+        "composition": {
+            "2025": 56350
+        }
+    },
+    {
+        "snapshot_date": "2025-11",
+        "total_lines": 60301,
+        "composition": {
+            "2025": 60301
+        }
+    },
+    {
+        "snapshot_date": "2025-12",
+        "total_lines": 86284,
+        "composition": {
+            "2025": 86284
+        }
+    },
+    {
+        "snapshot_date": "2026-01",
+        "total_lines": 86661,
+        "composition": {
+            "2025": 86626,
+            "2026": 35
+        }
+    },
+    {
+        "snapshot_date": "2026-02",
+        "total_lines": 87073,
+        "composition": {
+            "2025": 86420,
+            "2026": 653
+        }
+    },
+    {
+        "snapshot_date": "2026-03",
+        "total_lines": 87847,
+        "composition": {
+            "2025": 86142,
+            "2026": 1705
+        }
+    },
+    {
+        "snapshot_date": "2026-04",
+        "total_lines": 88573,
+        "composition": {
+            "2025": 86142,
+            "2026": 2431
+        }
+    }
+]
