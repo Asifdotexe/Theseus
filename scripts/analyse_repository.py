@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import time
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 
 
@@ -127,7 +127,9 @@ def _parse_blame_output(blame_output: str) -> dict[str, int]:
             elif parts[0] == "author-time":
                 try:
                     timestamp = int(parts[1])
-                    year = datetime.fromtimestamp(timestamp).strftime("%Y")
+                    year = datetime.fromtimestamp(timestamp, timezone.utc).strftime(
+                        "%Y"
+                    )
                     commit_to_year[current_commit] = year
                 except (ValueError, IndexError):
                     pass
