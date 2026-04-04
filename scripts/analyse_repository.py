@@ -3,6 +3,7 @@ This script is reposible for doing the heavy lifting.
 Collects the 12 blames per year for target repository
 """
 
+import json
 import os
 import subprocess
 from collections import defaultdict
@@ -62,7 +63,7 @@ def get_monthly_snapshots(repo_path: str) -> list[tuple[str, str]]:
     return sorted(snapshot.items(), key=lambda x: x[0])
 
 
-# TODO: Optimisation opportunity: use git blame directly on the file list or if the file is larger than 32KB,
+# FIXME: Optimisation opportunity: use git blame directly on the file list or if the file is larger than 32KB,
 #       batch it into chunks as that the N would be reduced
 def analyze_snapshots(repo_path: str, commit: str) -> dict[str, int]:
     """
@@ -99,3 +100,20 @@ def analyze_snapshots(repo_path: str, commit: str) -> dict[str, int]:
             continue
 
     return dict(age_distribution)
+
+
+def load_existing_state(json_fname: str) -> list[dict]:
+    """
+    Load the existing historical data to prevent redundant re-calculations.
+
+    :param json_fname: Path to the existing JSON file containing the historical data.
+    :return: A list of dictionaries with the historical data.
+    """
+    if os.path.exists(json_fname):
+        try:
+            with open(json_fname, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            print(f"Warning: {json_fname} is corrupted, Start fresh.")
+            return []
+    return []
