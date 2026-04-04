@@ -34,7 +34,7 @@ def timer(func):
 
 def _run_command(cmd: list[str], cwd: str | None = None) -> str:
     """
-    Execute a shell command and return it's standard output
+    Execute a shell command and return its standard output
 
     :param cmd: List of arguments forming the command.
     :param cwd: Directory path where the command should be executed.
@@ -294,7 +294,7 @@ if __name__ == "__main__":
     DATA_OUTPUT_DIR = "./data"
     os.makedirs(DATA_OUTPUT_DIR, exist_ok=True)
 
-    # The Case Studies: Start with these one to benchmark.
+    # The Case Studies: Start with this one to benchmark.
     TARGETS = [
         "anthropics/claude-code",
     ]
