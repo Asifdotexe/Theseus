@@ -131,9 +131,10 @@ class TheseusVisualizer {
 
         // Convert to D3 stack-ready format
         this.points = this.currentData.map(d => {
+            const totalLines = Object.values(d.composition).reduce((acc, val) => acc + val, 0);
             const point = {
                 date: new Date(d.snapshot_date),
-                total: d.total_lines
+                total: totalLines
             };
             this.years.forEach(year => {
                 point[year] = d.composition[year] || 0;

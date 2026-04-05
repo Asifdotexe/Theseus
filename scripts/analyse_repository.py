@@ -202,10 +202,10 @@ def load_existing_state(json_fname: str) -> list[dict]:
 
 
 def _atomic_write_json(json_path: str, data: list[dict]) -> None:
-    """Write JSON data atomically to prevent corruption on crash."""
+    """Write JSON data atomically and minified to prevent corruption and save space."""
     tmp_path = json_path + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
+        json.dump(data, f, separators=(",", ":"))
     os.replace(tmp_path, json_path)
 
 
@@ -304,7 +304,6 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
                 year_data.append(
                     {
                         "snapshot_date": period,
-                        "total_lines": sum(distribution.values()),
                         "composition": distribution,
                     }
                 )
