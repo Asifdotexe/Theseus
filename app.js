@@ -469,7 +469,6 @@ class TheseusVisualizer {
         }
         document.getElementById('oldest-line').textContent = oldestSurviving;
 
-        // 3. Entropy Ratio
         if (birthYear && first.total > 0) {
             const originalLinesInFirst = first[birthYear] || 0;
             const originalLinesInLast = last[birthYear] || 0;
@@ -478,6 +477,67 @@ class TheseusVisualizer {
         } else {
             document.getElementById('percent-replaced').textContent = '--';
         }
+
+        // 4. Modernization Velocity (Δ Old Code / Δ Time)
+        const lastDate = new Date(last.date);
+        const currentYear = lastDate.getFullYear();
+        const oldThreshold = currentYear - 3;
+        
+        // Find snapshot approx 6 months ago (180 days)
+        const targetMs = lastDate.getTime() - (180 * 24 * 60 * 60 * 1000);
+        let prevSnapshot = this.points[0];
+        for (let i = this.points.length - 1; i >= 0; i--) {
+            if (new Date(this.points[i].date).getTime() <= targetMs) {
+                prevSnapshot = this.points[i];
+                break;
+            }
+        }
+
+        const getOldLines = (snap) => {
+            return this.years
+                .filter(y => y <= oldThreshold)
+                .reduce((sum, y) => sum + (snap[y] || 0), 0);
+        };
+
+        const oldNow = getOldLines(last);
+        const oldThen = getOldLines(prevSnapshot);
+        const months = Math.max(1, (lastDate - new Date(prevSnapshot.date)) / (30 * 24 * 60 * 60 * 1000));
+        const velocity = (oldThen - oldNow) / months;
+
+        const velEl = document.getElementById('modernization-velocity');
+        if (this.points.length < 2 || oldThen === 0) {
+            velEl.textContent = 'Stable';
+        } else {
+            velEl.textContent = `${Math.max(0, Math.round(velocity)).toLocaleString()}`;
+        }
+
+        // 5. Mean Code Age (Weighted average)
+        const totalLines = last.total;
+        if (totalLines > 0) {
+            let totalAge = 0;
+            this.years.forEach(y => {
+                const lines = last[y] || 0;
+                const age = currentYear - parseInt(y);
+                totalAge += lines * age;
+            });
+            const meanAge = totalAge / totalLines;
+            document.getElementById('mean-code-age').textContent = `${meanAge.toFixed(1)} yrs`;
+        }
+
+        // 6. Peak Preservation (Largest legacy year)
+        let peakYear = '--';
+        let peakVal = 0;
+        this.years.forEach(y => {
+            if (parseInt(y) < currentYear) {
+                const val = last[y] || 0;
+                if (val > peakVal) {
+                    peakVal = val;
+                    peakYear = y;
+                }
+            }
+        });
+        document.getElementById('peak-year').textContent = peakYear;
+
     }
 
     createSVGElement(tag, attrs = {}) {
