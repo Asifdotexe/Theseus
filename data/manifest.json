@@ -1,0 +1,7 @@
+[
+  {
+    "name": "claude-code",
+    "file": "claude-code_data.json",
+    "description": "Claude's efficient, local-first coding CLI tool."
+  }
+]
