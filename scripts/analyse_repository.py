@@ -367,7 +367,13 @@ if __name__ == "__main__":
     DATA_OUTPUT_DIR = "./data"
     os.makedirs(DATA_OUTPUT_DIR, exist_ok=True)
 
-    TARGETS = ["anthropics/claude-code", "facebook/react", "langchain-ai/langchain"]
+    TARGETS = [
+        "anthropics/claude-code",
+        "facebook/react",
+        "langchain-ai/langchain",
+        "zed-industries/zed",
+        "numpy/numpy",
+    ]
 
     # Bound top-level workers by CPU count
     max_top_level_workers = min(

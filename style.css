@@ -244,14 +244,15 @@ svg#main-chart {
 .custom-tooltip {
     position: absolute;
     pointer-events: none;
-    background: rgba(10, 10, 12, 0.95);
+    background: rgba(10, 10, 12, 0.98);
     border: 1px solid var(--glass-border);
-    padding: 1.25rem;
-    border-radius: 1rem;
-    backdrop-filter: blur(12px);
+    padding: 1.75rem;
+    border-radius: 1.25rem;
+    backdrop-filter: blur(16px);
     z-index: 100;
-    min-width: 280px;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7);
+    min-width: 340px;
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8);
+    transition: opacity 0.2s ease;
 }
 
 .tooltip-header {
@@ -268,8 +269,8 @@ svg#main-chart {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 0.9rem;
-    margin-top: 0.4rem;
+    font-size: 0.95rem;
+    padding: 0.35rem 0;
 }
 
 .label-group {
@@ -300,7 +301,7 @@ svg#main-chart {
 .tooltip-divider {
     height: 1px;
     background: var(--glass-border);
-    margin: 0.75rem 0;
+    margin: 1.25rem 0;
 }
 
 /* Legend Styling */
@@ -308,11 +309,11 @@ svg#main-chart {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 1.5rem;
-    padding: 1rem;
+    gap: 2.5rem;
+    padding: 1.75rem;
     background: rgba(255, 255, 255, 0.02);
     border-bottom: 1px solid var(--glass-border);
-    margin-bottom: 1rem;
+    margin-bottom: 1.5rem;
 }
 
 .legend-item {

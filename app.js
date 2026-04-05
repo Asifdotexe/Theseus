@@ -473,9 +473,9 @@ class TheseusVisualizer {
 
         this.tooltip.innerHTML = `
             <div class="tooltip-header">Snapshot: ${dateStr}</div>
-            <div class="tooltip-item" style="margin-bottom: 0.5rem; opacity: 0.8">
-                <span>Total Project Size</span>
-                <strong>${point.total.toLocaleString()} lines</strong>
+            <div class="tooltip-item" style="margin-bottom: 0.25rem; opacity: 0.9">
+                <span class="label-group">Total Project Size</span>
+                <strong class="value-group">${point.total.toLocaleString()} lines</strong>
             </div>
             <div class="tooltip-divider"></div>
             ${compositionHtml}
