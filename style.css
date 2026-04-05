@@ -454,6 +454,70 @@ svg#main-chart {
     opacity: 0.5;
 }
 
+/* Personal Narrative Section */
+.personal-narrative {
+    width: 100%;
+    margin: 4rem 0 6rem;
+    padding: 4rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 2rem;
+    border: 1px solid var(--glass-border);
+    text-align: center;
+}
+
+.narrative-title {
+    font-family: var(--font-serif);
+    font-size: 2.2rem;
+    margin-bottom: 2.5rem;
+    color: var(--text-primary);
+}
+
+.narrative-content {
+    font-family: var(--font-serif);
+    font-size: 1.15rem;
+    line-height: 1.8;
+    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.narrative-content p {
+    margin: 0;
+}
+
+.philosophy-link {
+    color: var(--accent-cyan);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(59, 199, 199, 0.3);
+    transition: all 0.3s ease;
+}
+
+.philosophy-link:hover {
+    border-bottom-color: var(--accent-cyan);
+    background: rgba(59, 199, 199, 0.05);
+}
+
+.signature {
+    margin-top: 3.5rem;
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 1.4rem;
+    color: var(--text-primary);
+    opacity: 0.9;
+    line-height: 1.4;
+}
+
+.signature-subtitle {
+    font-style: normal;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    opacity: 0.7;
+    display: block;
+    margin-top: 0.5rem;
+    letter-spacing: 0.05em;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
     width: 8px;
