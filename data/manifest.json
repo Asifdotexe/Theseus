@@ -3,5 +3,15 @@
     "name": "claude-code",
     "file": "claude-code_data.json",
     "description": "Claude's efficient, local-first coding CLI tool."
+  },
+  {
+    "name": "react",
+    "file": "react_data.json",
+    "description": "A JavaScript library for building user interfaces"
+  },
+  {
+    "name": "langchain",
+    "file": "langchain_data.json",
+    "description": "A framework for developing applications powered by large language models"
   }
 ]

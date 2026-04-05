@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import shutil
+import stat
 import subprocess
 import time
 from collections import defaultdict
@@ -75,7 +76,9 @@ def get_snapshots(repo_path: str) -> list[tuple[str, str]]:
             continue
         commit_hash, commit_date = line.split("|")
         period = commit_date[:7]
-        snapshots[period] = commit_hash
+        # Keep the first (newest) commit per period
+        if period not in snapshots:
+            snapshots[period] = commit_hash
 
     quarterly_months = {"03", "06", "09", "12"}
     filtered_snapshots: dict[str, str] = {}
@@ -155,9 +158,18 @@ def analyze_snapshots(repo_path: str, commit_hash: str) -> dict[str, int]:
 
     valid_files = [f for f in files if os.path.isfile(os.path.join(repo_path, f))]
 
-    max_workers = int(
-        os.environ.get("BLAME_WORKERS", min(20, (os.cpu_count() or 1) * 2))
-    )
+    # Safe BLAME_WORKERS parsing with fallback
+    default_workers = min(20, (os.cpu_count() or 1) * 2)
+    try:
+        env_workers = os.environ.get("BLAME_WORKERS")
+        if env_workers is not None:
+            parsed = int(env_workers)
+            max_workers = max(1, min(parsed, 100))  # Clamp between 1-100
+        else:
+            max_workers = default_workers
+    except ValueError:
+        max_workers = default_workers
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_file = {
             executor.submit(_blame_single_file, repo_path, file): file
@@ -318,12 +330,17 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
             time.sleep(1)
 
             def handle_remove_readonly(func, path, exc_info):
-                """Handle permission errors on Windows/Unix."""
+                """Handle permission errors on Windows/Unix by adding write permission."""
                 try:
-                    os.chmod(path, 0o777)
+                    current_mode = os.stat(path).st_mode
+                    os.chmod(
+                        path, current_mode | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH
+                    )
                     func(path)
-                except Exception:
-                    pass
+                except PermissionError as e:
+                    logger.warning("Permission error cleaning up %s: %s", path, e)
+                except Exception as e:
+                    logger.warning("Error cleaning up %s: %s", path, e)
 
             for attempt in range(3):
                 try:
@@ -352,10 +369,17 @@ if __name__ == "__main__":
 
     TARGETS = ["anthropics/claude-code", "facebook/react", "langchain-ai/langchain"]
 
+    # Bound top-level workers by CPU count
+    max_top_level_workers = min(
+        len(TARGETS), int(os.getenv("MAX_TOP_LEVEL_WORKERS", os.cpu_count() or 1))
+    )
+
     overall_start = time.perf_counter()
     logger.info("Starting analysis pipeline for %d repositories", len(TARGETS))
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(TARGETS)) as executor:
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=max_top_level_workers
+    ) as executor:
         futures = {
             executor.submit(process_repository, target, DATA_OUTPUT_DIR): target
             for target in TARGETS
