@@ -183,10 +183,10 @@ body {
 }
 
 .visualization-canvas {
-    min-height: 650px;
+    min-height: 700px;
     display: flex;
     flex-direction: column;
-    padding: 1.5rem 1rem 0.5rem 1rem;
+    padding-bottom: 3rem;
 }
 
 .loading-state {
@@ -310,10 +310,9 @@ svg#main-chart {
     flex-wrap: wrap;
     justify-content: center;
     gap: 2.5rem;
-    padding: 1.75rem;
-    background: rgba(255, 255, 255, 0.02);
-    border-bottom: 1px solid var(--glass-border);
-    margin-bottom: 1.5rem;
+    padding: 1.5rem 0;
+    margin-bottom: 2rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .legend-item {

@@ -177,7 +177,7 @@ class TheseusVisualizer {
 
         // Color Logic & Gradients
         const defs = svg.append("defs");
-        
+
         const getBaseColor = (seriesName, seriesIndex) => {
             if (this.vizMode === 'identity') {
                 return (seriesIndex === 0) ? '#3bc7c7' : '#f0a33b';
@@ -194,7 +194,7 @@ class TheseusVisualizer {
                 .attr("id", `grad-${year}`)
                 .attr("x1", "0%").attr("y1", "0%")
                 .attr("x2", "0%").attr("y2", "100%");
-            
+
             grad.append("stop").attr("offset", "0%").attr("stop-color", color).attr("stop-opacity", 0.6);
             grad.append("stop").attr("offset", "100%").attr("stop-color", color).attr("stop-opacity", 0.05);
         });
@@ -277,23 +277,23 @@ class TheseusVisualizer {
             div.onmouseenter = () => {
                 const label = item.label;
                 const firstYear = this.years[0];
-                
+
                 d3.selectAll(".chart-area").style("opacity", 0.1);
-                
+
                 if (this.vizMode === 'identity') {
                     if (label === 'Original Code') {
                         d3.selectAll(`.chart-area[data-year='${firstYear}']`).style("opacity", 1);
                     } else {
                         // All years except the first one
                         d3.selectAll(".chart-area")
-                            .filter(function() { return d3.select(this).attr("data-year") !== firstYear; })
+                            .filter(function () { return d3.select(this).attr("data-year") !== firstYear; })
                             .style("opacity", 1);
                     }
                 } else {
                     d3.selectAll(`.chart-area[data-year='${label}']`).style("opacity", 1);
                 }
             };
-            
+
             div.onmouseleave = () => {
                 d3.selectAll(".chart-area").style("opacity", 1);
             };
@@ -341,13 +341,14 @@ class TheseusVisualizer {
             .call(xAxis);
 
         xGroup.selectAll("text")
-            .attr("y", 25)
-            .attr("fill", "#6b7280")
-            .attr("font-size", "10px")
+            .attr("y", 15)
+            .attr("fill", "#8b949e")
+            .attr("font-size", "11px")
+            .attr("letter-spacing", "0.05em")
             .attr("font-family", "inherit");
 
-        xGroup.select(".domain").remove();
-        xGroup.selectAll("line").remove();
+        xGroup.select(".domain").attr("stroke", "rgba(255, 255, 255, 0.1)");
+        xGroup.selectAll(".tick line").attr("stroke", "rgba(255, 255, 255, 0.1)");
     }
 
     setupInteractivity(g, width, height, xScale, yScale) {
@@ -388,98 +389,61 @@ class TheseusVisualizer {
     showTooltip(point, x, y) {
         this.tooltip.classList.remove('hidden');
 
-        // Initial placement
+        const dateStr = point.date instanceof Date
+            ? point.date.toISOString().split('T')[0]
+            : point.date;
+
+        const oldestYear = this.years[0];
+        const originalVal = point[oldestYear] || 0;
+        const evolutionVal = point.total - originalVal;
+
+        this.tooltip.innerHTML = `
+            <div class="tooltip-header">Snapshot: ${dateStr}</div>
+            <div class="tooltip-item" style="margin-bottom: 0.5rem; opacity: 0.9">
+                <span class="label-group">Total Project Size</span>
+                <strong class="value-group">${point.total.toLocaleString()} lines</strong>
+            </div>
+            <div class="tooltip-divider"></div>
+            <div class="tooltip-item">
+                <div class="label-group">
+                    <span class="color-dot" style="background: #3bc7c7"></span>
+                    <span>Original (${oldestYear})</span>
+                </div>
+                <div class="value-group">
+                    <strong>${originalVal.toLocaleString()}</strong>
+                    <span class="percent-tag">${((originalVal / point.total) * 100).toFixed(1)}%</span>
+                </div>
+            </div>
+            <div class="tooltip-item">
+                <div class="label-group">
+                    <span class="color-dot" style="background: #f0a33b"></span>
+                    <span>Refactored</span>
+                </div>
+                <div class="value-group">
+                    <strong>${evolutionVal.toLocaleString()}</strong>
+                    <span class="percent-tag">${((evolutionVal / point.total) * 100).toFixed(1)}%</span>
+                </div>
+            </div>
+        `;
+
+        // Positioning AFTER content injection
+        const tooltipWidth = this.tooltip.offsetWidth || 340;
+        const tooltipHeight = this.tooltip.offsetHeight || 180;
+        const svgRect = this.canvas.getBoundingClientRect();
+
         let left = x + 15;
         let top = y + 15;
 
-        // Get bounds
-        const tooltipWidth = this.tooltip.offsetWidth;
-        const tooltipHeight = this.tooltip.offsetHeight;
-        const containerWidth = document.body.clientWidth;
-        const svgRect = this.canvas.getBoundingClientRect();
-
-        // Horizontal flip if too close to right edge
-        if (svgRect.left + left + tooltipWidth > containerWidth - 20) {
+        // Flip if clipping window edges
+        if (svgRect.left + left + tooltipWidth > window.innerWidth - 20) {
             left = x - tooltipWidth - 15;
         }
-
-        // Vertical flip if too close to bottom (relative to viewport)
         if (svgRect.top + top + tooltipHeight > window.innerHeight - 20) {
             top = y - tooltipHeight - 15;
         }
 
         this.tooltip.style.left = `${left}px`;
         this.tooltip.style.top = `${top}px`;
-
-        const dateStr = point.date instanceof Date 
-            ? point.date.toISOString().split('T')[0] 
-            : point.date;
-
-        const getColor = (idx, year) => {
-            if (this.vizMode === 'identity') return idx === 0 ? '#3bc7c7' : '#f0a33b';
-            const yearIdx = this.years.indexOf(year);
-            return `hsl(${(180 + yearIdx * 40) % 360}, 70%, 55%)`;
-        };
-
-        let compositionHtml = '';
-        if (this.vizMode === 'identity') {
-            const oldestYear = this.years[0];
-            const originalVal = point[oldestYear] || 0;
-            const refactoredVal = point.total - originalVal;
-
-            compositionHtml += `
-                <div class="tooltip-item">
-                    <div class="label-group">
-                        <span class="color-dot" style="background: #3bc7c7"></span>
-                        <span>Original (${oldestYear})</span>
-                    </div>
-                    <div class="value-group">
-                        <strong>${originalVal.toLocaleString()}</strong>
-                        <span class="percent-tag">${((originalVal / point.total) * 100).toFixed(1)}%</span>
-                    </div>
-                </div>
-                <div class="tooltip-item">
-                    <div class="label-group">
-                        <span class="color-dot" style="background: #f0a33b"></span>
-                        <span>Refactored</span>
-                    </div>
-                    <div class="value-group">
-                        <strong>${refactoredVal.toLocaleString()}</strong>
-                        <span class="percent-tag">${((refactoredVal / point.total) * 100).toFixed(1)}%</span>
-                    </div>
-                </div>
-                <div class="tooltip-divider"></div>
-            `;
-        }
-
-        this.years.slice().sort((a, b) => b - a).forEach(year => {
-            const val = point[year] || 0;
-            if (val > 0) {
-                const yearColor = getColor(null, year);
-                compositionHtml += `
-                    <div class="tooltip-item">
-                        <div class="label-group">
-                            <span class="color-dot" style="background: ${yearColor}"></span>
-                            <span>${year}</span>
-                        </div>
-                        <div class="value-group">
-                            <strong>${val.toLocaleString()}</strong>
-                            <span class="percent-tag">${((val / point.total) * 100).toFixed(1)}%</span>
-                        </div>
-                    </div>
-                `;
-            }
-        });
-
-        this.tooltip.innerHTML = `
-            <div class="tooltip-header">Snapshot: ${dateStr}</div>
-            <div class="tooltip-item" style="margin-bottom: 0.25rem; opacity: 0.9">
-                <span class="label-group">Total Project Size</span>
-                <strong class="value-group">${point.total.toLocaleString()} lines</strong>
-            </div>
-            <div class="tooltip-divider"></div>
-            ${compositionHtml}
-        `;
     }
 
     hideTooltip() {
