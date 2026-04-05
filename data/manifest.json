@@ -1,10 +1,5 @@
 [
   {
-    "name": "claude-code",
-    "file": "claude-code_data.json",
-    "description": "Claude’s agentic CLI tool for local coding tasks."
-  },
-  {
     "name": "react",
     "file": "react_data.json",
     "description": "Component-based JavaScript library for building user interfaces."
@@ -23,5 +18,10 @@
     "name": "zed",
     "file": "zed_data.json",
     "description": "High-performance, GPU-accelerated code editor for teamwork."
+  },
+  {
+    "name": "claude-code",
+    "file": "claude-code_data.json",
+    "description": "Claude's agentic CLI tool for local coding tasks."
   }
 ]

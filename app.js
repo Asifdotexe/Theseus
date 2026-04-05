@@ -395,9 +395,38 @@ class TheseusVisualizer {
 
         const oldestYear = this.years[0];
         const originalVal = point[oldestYear] || 0;
+
+        // Find previous point to detect refactor
+        const idx = this.points.indexOf(point);
+        const prev = idx > 0 ? this.points[idx - 1] : null;
+        const prevOldVal = prev ? (prev[oldestYear] || 0) : null;
+        const isRefactor = prevOldVal && originalVal < prevOldVal * 0.85;
+
         const evolutionVal = point.total - originalVal;
 
+        let refactorHTML = '';
+        if (originalVal === 0) {
+            refactorHTML = `
+                <div style="background: rgba(248, 113, 113, 0.15); border: 1px solid rgba(248, 113, 113, 0.4); 
+                            padding: 1rem; border-radius: 1rem; margin-bottom: 1.25rem; color: #f87171; 
+                            font-size: 0.85rem; line-height: 1.5;">
+                    <strong style="display: block; margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em;">Ship of Theseus: The Great Rebirth</strong>
+                    The original source code is now entirely gone.<br/><strong>Is this still the same codebase?</strong>
+                </div>
+            `;
+        } else if (isRefactor) {
+            refactorHTML = `
+                <div style="background: rgba(240, 163, 59, 0.15); border: 1px solid rgba(240, 163, 59, 0.4); 
+                            padding: 0.75rem; border-radius: 0.75rem; margin-bottom: 1rem; color: #f0a33b; 
+                            font-size: 0.85rem; line-height: 1.4;">
+                    <strong style="display: block; margin-bottom: 0.25rem;">Ship of Theseus: Major Refactor</strong>
+                    A significant part of the original source was refactored here.<br/>How much can you change before the identity shifts?
+                </div>
+            `;
+        }
+
         this.tooltip.innerHTML = `
+            ${refactorHTML}
             <div class="tooltip-header">Snapshot: ${dateStr}</div>
             <div class="tooltip-item" style="margin-bottom: 0.5rem; opacity: 0.9">
                 <span class="label-group">Total Project Size</span>
@@ -428,7 +457,7 @@ class TheseusVisualizer {
 
         // Positioning AFTER content injection
         const tooltipWidth = this.tooltip.offsetWidth || 340;
-        const tooltipHeight = this.tooltip.offsetHeight || 180;
+        const tooltipHeight = this.tooltip.offsetHeight || 220;
         const svgRect = this.canvas.getBoundingClientRect();
 
         let left = x + 15;
@@ -482,7 +511,7 @@ class TheseusVisualizer {
         const lastDate = new Date(last.date);
         const currentYear = lastDate.getFullYear();
         const oldThreshold = currentYear - 3;
-        
+
         // Find snapshot approx 6 months ago (180 days)
         const targetMs = lastDate.getTime() - (180 * 24 * 60 * 60 * 1000);
         let prevSnapshot = this.points[0];
@@ -538,6 +567,22 @@ class TheseusVisualizer {
         });
         document.getElementById('peak-year').textContent = peakYear;
 
+        // 7. Greatest Transformation (Largest single drop in origin)
+        let maxDrop = 0;
+        let dropDate = '--';
+        if (birthYear && this.points.length > 1) {
+            for (let i = 1; i < this.points.length; i++) {
+                const prev = this.points[i - 1][birthYear] || 0;
+                const curr = this.points[i][birthYear] || 0;
+                const drop = prev - curr;
+                if (drop > maxDrop) {
+                    maxDrop = drop;
+                    const d = new Date(this.points[i].date);
+                    dropDate = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                }
+            }
+        }
+        document.getElementById('transformation-date').textContent = dropDate;
     }
 
     createSVGElement(tag, attrs = {}) {
