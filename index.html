@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ship of Theseus | Code Visualizer</title>
+    <!-- Typography: Playfair Display (Serif) & JetBrains Mono (Mono) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="noise-overlay"></div>
+
+    <main class="container">
+        <header class="hero">
+            <h1 class="title">The Ship of Theseus</h1>
+            <p class="subtitle">Does a codebase remain the same if every line is replaced? A monthly pulse on software
+                entropy.</p>
+
+            <div class="controls-bar">
+                <div id="repo-selector" class="selector-pill" role="group" aria-label="Repository Selection">
+                    <!-- Selectors will be injected here -->
+                </div>
+
+                <div class="settings-row">
+                    <div class="settings-group">
+                        <span class="control-label">Mode:</span>
+                        <div id="viz-mode-toggle" class="selector-pill small" role="group">
+                            <button class="mode-btn active" data-mode="chronological">Chrono</button>
+                            <button class="mode-btn" data-mode="identity">Identity</button>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <span class="control-label">Scale:</span>
+                        <div id="scale-toggle" class="selector-pill small" role="group">
+                            <button class="scale-btn active" data-scale="linear">Linear</button>
+                            <button class="scale-btn" data-scale="log">Log</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <p id="repo-description" class="repo-description"></p>
+        </header>
+
+        <section class="visualization-canvas glass-panel">
+            <div id="chart-loading" class="loading-state">[ Scanning repository history... ]</div>
+            <div id="chart-error" class="error-banner hidden"></div>
+
+            <div id="chart-container" class="chart-wrapper">
+                <div id="chart-legend" class="chart-legend"></div>
+                <svg id="main-chart" preserveAspectRatio="none"></svg>
+                <div id="tooltip" class="custom-tooltip hidden"></div>
+            </div>
+        </section>
+
+        <section class="insights-grid">
+            <div class="insight-card glass-panel" id="card-evolution">
+                <h3 class="card-title">Evolution Metrics</h3>
+                <div class="card-content">
+                    <p class="metric-value" id="percent-replaced">--</p>
+                    <p class="metric-label">of original code replaced</p>
+                </div>
+            </div>
+            <div class="insight-card glass-panel" id="card-ancestry">
+                <h3 class="card-title">Ancestry Analysis</h3>
+                <div class="card-content">
+                    <p class="metric-value" id="oldest-line">--</p>
+                    <p class="metric-label">Oldest surviving logic (Year)</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="info-grid">
+            <div class="info-card glass-panel">
+                <h3 class="card-title">How to read this chart</h3>
+                <p class="card-text">The X-axis represents time moving forward. The Y-axis shows total lines of code.
+                    Each colored band represents the surviving code originally written in a specific year.</p>
+            </div>
+            <div class="info-card glass-panel">
+                <h3 class="card-title">The Architecture</h3>
+                <p class="card-text">This data is generated monthly via a static analysis pipeline. It dynamically scans
+                    the repository history and outputs a structured JSON file to minimize visual overhead in the
+                    browser.</p>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <p class="footer-text">&copy; 2026 Made by Sayyed. Built in the Terminal Void. Reflecting the nature of
+                change.</p>
+        </footer>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

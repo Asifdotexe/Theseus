@@ -1,35 +1,22 @@
 """
 This script is responsible for doing the heavy lifting.
-Processes monthly snapshots incrementally to track code age distribution.
+Processes repository snapshots incrementally to track code age distribution.
+Uses quarterly resolution for historical data (pre-2025) and monthly for recent data (2025+).
 """
 
 import concurrent.futures
 import json
+import logging
 import os
 import shutil
+import stat
 import subprocess
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
-from functools import wraps
+from itertools import groupby
 
-
-def timer(func):
-    """
-    A decorator that prints the execution time of the function it wraps.
-    Used for benchmarking sequential vs. concurrent execution optimizations.
-    """
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        start_time = time.perf_counter()
-        result = func(*args, **kwargs)
-        end_time = time.perf_counter()
-        execution_time = end_time - start_time
-        print(f"⏱️  [TIMER] '{func.__name__}' executed in {execution_time:.4f} seconds")
-        return result
-
-    return wrapper
+logger = logging.getLogger(__name__)
 
 
 def _run_command(cmd: list[str], cwd: str | None = None) -> str:
@@ -65,46 +52,52 @@ def clone_repository(repo_slug: str, clone_dir: str) -> None:
     :param repo_slug: The GitHub repository identifier (e.g., 'facebook/react').
     :param clone_dir: The local directory where the repository should be cloned.
     """
-    print(f"Cloning {repo_slug} into {clone_dir}...")
+    logger.info("Cloning %s into %s...", repo_slug, clone_dir)
     repo_url = f"https://github.com/{repo_slug}.git"
     _run_command(["git", "clone", repo_url, clone_dir])
 
 
-def get_monthly_snapshots(repo_path: str) -> list[tuple[str, str]]:
+def get_snapshots(repo_path: str) -> list[tuple[str, str]]:
     """
-    Identify one commit per month to act as a historical snapshot.
+    Identify commits for snapshots: quarterly for pre-2025, monthly for 2025+.
+
+    Quarterly uses the last month of each quarter: 03, 06, 09, 12.
 
     :param repo_path: Path to the git repository.
     :return: A list of tuples, each containing a 'YYYY-MM' period and the corresponding commit hash.
-             i.e., [(period, commit_hash), ...]
     """
     log_output = _run_command(
         cmd=["git", "log", "--pretty=format:%H|%cI"], cwd=repo_path
     )
 
-    snapshots: dict = {}
+    snapshots: dict[str, str] = {}
     for line in log_output.splitlines():
         if not line:
             continue
         commit_hash, commit_date = line.split("|")
-
-        # We slice the first 7 characters of the ISO to get the 'YYYY-MM' period
         period = commit_date[:7]
+        # Keep the first (newest) commit per period
+        if period not in snapshots:
+            snapshots[period] = commit_hash
 
-        # Git log outputs newest commit first. By assigning to the dictionary,
-        # the last commit processed for a month overwrites earlier ones,
-        # leaving us with the very first commit of that specific month
-        snapshots[period] = commit_hash
+    quarterly_months = {"03", "06", "09", "12"}
+    filtered_snapshots: dict[str, str] = {}
 
-    return sorted(snapshots.items(), key=lambda x: x[0])
+    for period, commit_hash in snapshots.items():
+        year = period[:4]
+        month = period[5:7]
+
+        if int(year) >= 2025:
+            filtered_snapshots[period] = commit_hash
+        elif month in quarterly_months:
+            filtered_snapshots[period] = commit_hash
+
+    return sorted(filtered_snapshots.items(), key=lambda x: x[0])
 
 
 def _parse_blame_output(blame_output: str) -> dict[str, int]:
     """
     Parse git blame --line-porcelain output, returning a year -> line count mapping.
-    Extracting this logic reduces nesting and properly handles Git's porcelain format,
-    where 'author-time' is only printed once per commit block, but actual code lines
-    begin with a tab character.
 
     :param blame_output: The raw output from git blame --line-porcelain
     :return: A dictionary mapping years to the number of lines changed in that year
@@ -115,13 +108,11 @@ def _parse_blame_output(blame_output: str) -> dict[str, int]:
 
     for line in blame_output.splitlines():
         if line.startswith("\t"):
-            # This is an actual line of code. Attribute it to the year of the current commit.
             if current_commit and current_commit in commit_to_year:
                 year = commit_to_year[current_commit]
                 file_distribution[year] += 1
         else:
             parts = line.split(" ")
-            # Check if the line starts with a 40-char (SHA-1) or 64-char (SHA-256) commit hash
             if len(parts[0]) in (40, 64):
                 current_commit = parts[0]
             elif parts[0] == "author-time":
@@ -148,11 +139,9 @@ def _blame_single_file(repo_path: str, file: str) -> dict[str, int]:
         )
         return _parse_blame_output(blame_output)
     except RuntimeError:
-        # Skip files that git blame cannot process (like binaries)
         return {}
 
 
-@timer
 def analyze_snapshots(repo_path: str, commit_hash: str) -> dict[str, int]:
     """
     Analyze the snapshots collected from the repository.
@@ -169,10 +158,19 @@ def analyze_snapshots(repo_path: str, commit_hash: str) -> dict[str, int]:
 
     valid_files = [f for f in files if os.path.isfile(os.path.join(repo_path, f))]
 
-    # Use ThreadPoolExecutor to bypass the O(N) sequential subprocess bottleneck.
-    # Subprocess calls release the GIL, making threading highly effective here.
-    max_threads = 20
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
+    # Safe BLAME_WORKERS parsing with fallback
+    default_workers = min(20, (os.cpu_count() or 1) * 2)
+    try:
+        env_workers = os.environ.get("BLAME_WORKERS")
+        if env_workers is not None:
+            parsed = int(env_workers)
+            max_workers = max(1, min(parsed, 100))  # Clamp between 1-100
+        else:
+            max_workers = default_workers
+    except ValueError:
+        max_workers = default_workers
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_file = {
             executor.submit(_blame_single_file, repo_path, file): file
             for file in valid_files
@@ -198,17 +196,26 @@ def load_existing_state(json_fname: str) -> list[dict]:
             with open(json_fname, "r", encoding="utf-8") as f:
                 return json.load(f)
         except json.JSONDecodeError:
-            print(f"Warning: {json_fname} is corrupted, Start fresh.")
+            logger.warning("%s is corrupted, starting fresh.", json_fname)
             return []
     return []
 
 
-# TODO: Make the main function to tie everything together
-@timer
+def _atomic_write_json(json_path: str, data: list[dict]) -> None:
+    """Write JSON data atomically to prevent corruption on crash."""
+    tmp_path = json_path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
+    os.replace(tmp_path, json_path)
+
+
 def process_repository(repo_slug: str, data_dir: str) -> None:
     """
     Orchestrate the extraction of Ship of Theseus code persistence data
-    using an incremental load strategy by just processing the delta
+    using an incremental load strategy by just processing the delta.
+
+    Processes year-by-year and writes to disk after each year completes
+    to prevent data loss on crash.
 
     :param repo_slug: The GitHub repository identifier (e.g., 'facebook/react').
     :param data_dir: Path where the resulting JSON data will be saved.
@@ -216,23 +223,14 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
     repo_name = repo_slug.split("/")[-1]
     temp_repo_path = f"./temp_workdir_{repo_name}"
     output_json_path = os.path.join(data_dir, f"{repo_name}_data.json")
-    # System design thinking is that we don't want to load existing state and recalculate redundantly
-    #
-    # We clone the repository dynamically just to read it. By pulling the codebase
-    # ourselves instead of relying on GitHub Actions checkout steps, we can iterate
-    # through 10, 50, or 100 repositories entirely within Python.
-    #
-    # Let's say we have a 10-year old repository. Running git blame on every file for every single month
-    # of it's 120 month long history would take hours and it would blow past the GitHub Action's free tier limit.
-    # By loading the existing state and only processing the delta, we can avoid this and run much faster.
-    #
-    # This reduces a 30-minute monthly compute job down to about 5 seconds,
-    # ensuring that I don't have to pay for keeping this project alive lmao.
+
     try:
         if not os.path.exists(temp_repo_path):
             clone_repository(repo_slug, temp_repo_path)
         else:
-            print(f"Repository {repo_name} already exists locally. Fetching latest...")
+            logger.info(
+                "Repository %s already exists locally. Fetching latest...", repo_name
+            )
             _run_command(["git", "fetch", "--all"], cwd=temp_repo_path)
             for branch in ["main", "master"]:
                 try:
@@ -245,65 +243,153 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
         historical_data = load_existing_state(output_json_path)
         processed_periods = set(item["snapshot_date"] for item in historical_data)
 
-        all_snapshots = get_monthly_snapshots(temp_repo_path)
-        new_data = []
+        all_snapshots = get_snapshots(temp_repo_path)
+        new_snapshots = [
+            (period, commit)
+            for period, commit in all_snapshots
+            if period not in processed_periods
+        ]
 
-        for period, commit in all_snapshots:
-            if period in processed_periods:
-                # We already know what the repository looked like in this month. Skip it.
-                continue
-
-            print(
-                f"[{repo_name}] Calculating DELTA for new period: {period} (Commit: {commit[:7]})..."
+        if not new_snapshots:
+            logger.info(
+                "[%s] No new periods to process. Data is already up to date!", repo_name
             )
-            distribution = analyze_snapshots(temp_repo_path, commit)
+            return
 
-            new_data.append(
-                {
-                    "snapshot_date": period,
-                    "total_lines": sum(distribution.values()),
-                    "composition": distribution,
-                }
+        logger.info(
+            "[%s] Processing %d new snapshots with hybrid resolution (quarterly pre-2025, monthly 2025+)",
+            repo_name,
+            len(new_snapshots),
+        )
+
+        snapshots_by_year = groupby(new_snapshots, key=lambda x: x[0][:4])
+        total_new_data = []
+
+        for year, year_snapshots in snapshots_by_year:
+            year_snapshots_list = list(year_snapshots)
+            year_data = []
+            year_start = time.perf_counter()
+
+            logger.info(
+                "[%s] Processing year %s: %d snapshots",
+                repo_name,
+                year,
+                len(year_snapshots_list),
             )
 
-        if not new_data:
-            print(
-                f"[{repo_name}] No new months to process. Data is already up to date!"
-            )
-        else:
-            final_dataset = historical_data + new_data
+            for idx, (period, commit) in enumerate(year_snapshots_list, 1):
+                logger.info(
+                    "[%s] [%s] Processing %s (%d/%d) - Commit: %s",
+                    repo_name,
+                    year,
+                    period,
+                    idx,
+                    len(year_snapshots_list),
+                    commit[:7],
+                )
+
+                snapshot_start = time.perf_counter()
+                distribution = analyze_snapshots(temp_repo_path, commit)
+                snapshot_elapsed = time.perf_counter() - snapshot_start
+
+                logger.info(
+                    "[%s] [%s] Completed %s in %.2f seconds (%d total lines)",
+                    repo_name,
+                    year,
+                    period,
+                    snapshot_elapsed,
+                    sum(distribution.values()),
+                )
+
+                year_data.append(
+                    {
+                        "snapshot_date": period,
+                        "total_lines": sum(distribution.values()),
+                        "composition": distribution,
+                    }
+                )
+
+            total_new_data.extend(year_data)
+            year_elapsed = time.perf_counter() - year_start
+
+            final_dataset = historical_data + total_new_data
             final_dataset.sort(key=lambda x: x["snapshot_date"])
+            _atomic_write_json(output_json_path, final_dataset)
 
-            with open(output_json_path, "w", encoding="utf-8") as f:
-                json.dump(final_dataset, f, indent=4)
-
-            print(
-                f"[{repo_name}] Delta analysis complete. Appended {len(new_data)} new months."
+            logger.info(
+                "[%s] Completed year %s in %.2f seconds. Wrote %d total snapshots to disk.",
+                repo_name,
+                year,
+                year_elapsed,
+                len(final_dataset),
             )
 
     finally:
-        # Polite cleanup: Remove the gigantic source code folders we downloaded.
-        # We only want to keep the JSON data!
         if os.path.exists(temp_repo_path):
-            print(f"Cleaning up temporary directory: {temp_repo_path}")
-            # Note: Windows might need special handling for git files, but this works on Linux/Mac (GitHub Actions)
-            shutil.rmtree(temp_repo_path, ignore_errors=True)
+            logger.info("Cleaning up temporary directory: %s", temp_repo_path)
+            time.sleep(1)
+
+            def handle_remove_readonly(func, path, exc_info):
+                """Handle permission errors on Windows/Unix by adding write permission."""
+                try:
+                    current_mode = os.stat(path).st_mode
+                    os.chmod(
+                        path, current_mode | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH
+                    )
+                    func(path)
+                except PermissionError as e:
+                    logger.warning("Permission error cleaning up %s: %s", path, e)
+                except Exception as e:
+                    logger.warning("Error cleaning up %s: %s", path, e)
+
+            for attempt in range(3):
+                try:
+                    shutil.rmtree(temp_repo_path, onerror=handle_remove_readonly)
+                    break
+                except Exception as e:
+                    if attempt < 2:
+                        time.sleep(1)
+                        logger.warning("Cleanup attempt %d failed: %s", attempt + 1, e)
+                    else:
+                        logger.error(
+                            "Failed to clean up temporary directory after 3 attempts: %s",
+                            e,
+                        )
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
     DATA_OUTPUT_DIR = "./data"
     os.makedirs(DATA_OUTPUT_DIR, exist_ok=True)
 
-    # The Case Studies: Start with this one to benchmark.
-    TARGETS = [
-        "anthropics/claude-code",
-    ]
+    TARGETS = ["anthropics/claude-code", "facebook/react", "langchain-ai/langchain"]
+
+    # Bound top-level workers by CPU count
+    max_top_level_workers = min(
+        len(TARGETS), int(os.getenv("MAX_TOP_LEVEL_WORKERS", os.cpu_count() or 1))
+    )
 
     overall_start = time.perf_counter()
-    for target in TARGETS:
-        print(f"\n{'=' * 50}\nStarting analysis pipeline for: {target}\n{'=' * 50}")
-        process_repository(target, DATA_OUTPUT_DIR)
-    overall_end = time.perf_counter()
-    print(
-        f"\n{'=' * 50}\nTOTAL PIPELINE EXECUTION TIME: {overall_end - overall_start:.2f} seconds\n{'=' * 50}"
-    )
+    logger.info("Starting analysis pipeline for %d repositories", len(TARGETS))
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=max_top_level_workers
+    ) as executor:
+        futures = {
+            executor.submit(process_repository, target, DATA_OUTPUT_DIR): target
+            for target in TARGETS
+        }
+        for future in concurrent.futures.as_completed(futures):
+            target = futures[future]
+            try:
+                future.result()
+            except Exception as e:
+                logger.error("Failed to process %s: %s", target, e)
+
+    overall_elapsed = time.perf_counter() - overall_start
+    logger.info("TOTAL PIPELINE EXECUTION TIME: %.2f seconds", overall_elapsed)
