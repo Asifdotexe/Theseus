@@ -12,6 +12,7 @@
         href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 
 <body>
@@ -71,9 +72,15 @@
             </div>
             <div class="insight-card glass-panel" id="card-ancestry">
                 <h3 class="card-title">Ancestry Analysis</h3>
-                <div class="card-content">
-                    <p class="metric-value" id="oldest-line">--</p>
-                    <p class="metric-label">Oldest surviving logic (Year)</p>
+                <div class="card-content-split">
+                    <div class="metric-group">
+                        <p class="metric-value small" id="birth-year">--</p>
+                        <p class="metric-label">Repository Genesis</p>
+                    </div>
+                    <div class="metric-group">
+                        <p class="metric-value small" id="oldest-line">--</p>
+                        <p class="metric-label">Oldest Surviving</p>
+                    </div>
                 </div>
             </div>
         </section>

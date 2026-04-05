@@ -1,14 +1,13 @@
 :root {
-    --bg-void: #0a0a0c;
-    --text-primary: #e0e0e0;
-    --text-secondary: #9ca3af;
-    --accent-cyan: hsl(180, 70%, 55%);
-    --accent-purple: hsl(270, 70%, 55%);
-    --accent-orange: hsl(30, 70%, 55%);
-    --glass-background: rgba(17, 19, 25, 0.7);
-    --glass-border: rgba(255, 255, 255, 0.1);
-    --font-serif: "Playfair Display", serif;
-    --font-mono: "JetBrains Mono", monospace;
+    --bg-dark: #0a0a0c;
+    --accent-cyan: #3bc7c7;
+    --accent-purple: #8b5cf6;
+    --accent-orange: #f0a33b;
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --font-serif: 'Playfair Display', serif;
+    --font-mono: 'JetBrains Mono', monospace;
 }
 
 * {
@@ -18,10 +17,11 @@
 }
 
 body {
-    background-color: var(--bg-void);
+    background-color: var(--bg-dark);
     color: var(--text-primary);
     font-family: var(--font-mono);
     line-height: 1.6;
+    margin: 0;
     overflow-x: hidden;
     min-height: 100vh;
 }
@@ -60,13 +60,13 @@ body {
 .title {
     font-family: var(--font-serif);
     font-size: 4rem;
-    font-weight: 900;
+    font-weight: 700;
     letter-spacing: -0.02em;
-    background: linear-gradient(180deg, #fff, #999);
+    margin: 0;
+    background: linear-gradient(to bottom, #fff, #94a3b8);
     -webkit-background-clip: text;
     background-clip: text;
-    -webkit-text-fill-color: transparent;
-    text-shadow: 0 0 30px rgba(255, 255, 255, 0.1);
+    color: transparent;
 }
 
 .subtitle {
@@ -157,11 +157,10 @@ body {
 .repo-btn.active,
 .mode-btn.active,
 .scale-btn.active {
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--text-primary);
-    opacity: 1;
-    box-shadow: 0 0 20px rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: var(--accent-cyan);
+    color: var(--bg-dark);
+    font-weight: 600;
+    box-shadow: 0 0 15px rgba(59, 199, 199, 0.3);
 }
 
 .repo-description {
@@ -174,7 +173,7 @@ body {
 
 /* Visualization Canvas */
 .glass-panel {
-    background: var(--glass-background);
+    background: rgba(17, 19, 25, 0.7);
     border: 1px solid var(--glass-border);
     border-radius: 2rem;
     backdrop-filter: blur(20px);
@@ -364,10 +363,18 @@ svg#main-chart {
     font-weight: 700;
     line-height: 1;
     margin-bottom: 0.5rem;
-    background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: var(--accent-cyan);
+}
+
+.metric-value.small {
+    font-size: 2.2rem;
+}
+
+.card-content-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    align-items: end;
 }
 
 .metric-label {
@@ -422,7 +429,7 @@ svg#main-chart {
 }
 
 ::-webkit-scrollbar-track {
-    background: var(--bg-void);
+    background: var(--bg-dark);
 }
 
 ::-webkit-scrollbar-thumb {

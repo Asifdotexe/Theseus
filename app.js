@@ -123,33 +123,21 @@ class TheseusVisualizer {
     }
 
     processData() {
-        // Collect all composing years
         const yearSet = new Set();
         this.currentData.forEach(d => {
             Object.keys(d.composition).forEach(y => yearSet.add(y));
         });
         this.years = Array.from(yearSet).sort();
 
-        // Map data points
+        // Convert to D3 stack-ready format
         this.points = this.currentData.map(d => {
             const point = {
-                date: d.snapshot_date,
-                total: d.total_lines,
-                composition: d.composition,
-                stack: {}
+                date: new Date(d.snapshot_date),
+                total: d.total_lines
             };
-
-            let cumulative = 0;
             this.years.forEach(year => {
-                const value = d.composition[year] || 0;
-                point.stack[year] = {
-                    start: cumulative,
-                    end: cumulative + value,
-                    value: value
-                };
-                cumulative += value;
+                point[year] = d.composition[year] || 0;
             });
-
             return point;
         });
     }
@@ -159,98 +147,116 @@ class TheseusVisualizer {
         const height = this.canvas.clientHeight;
         if (!width || !height) return;
 
-        this.canvas.innerHTML = '';
-
-        // Define Gradients
-        const defs = this.createSVGElement('defs');
-        if (this.vizMode === 'identity') {
-            const gradOriginal = this.createSVGElement('linearGradient', { id: `grad-original`, x1: '0%', y1: '0%', x2: '0%', y2: '100%' });
-            gradOriginal.appendChild(this.createSVGElement('stop', { offset: '0%', 'stop-color': `#3bc7c7`, 'stop-opacity': 0.8 }));
-            gradOriginal.appendChild(this.createSVGElement('stop', { offset: '100%', 'stop-color': `#3bc7c7`, 'stop-opacity': 0.1 }));
-            defs.appendChild(gradOriginal);
-
-            const gradRefactored = this.createSVGElement('linearGradient', { id: `grad-refactored`, x1: '0%', y1: '0%', x2: '0%', y2: '100%' });
-            gradRefactored.appendChild(this.createSVGElement('stop', { offset: '0%', 'stop-color': `#f0a33b`, 'stop-opacity': 0.8 }));
-            gradRefactored.appendChild(this.createSVGElement('stop', { offset: '100%', 'stop-color': `#f0a33b`, 'stop-opacity': 0.1 }));
-            defs.appendChild(gradRefactored);
-        } else {
-            this.years.forEach((year, i) => {
-                const hue = (180 + i * 40) % 360;
-                const grad = this.createSVGElement('linearGradient', { id: `grad-${year}`, x1: '0%', y1: '0%', x2: '0%', y2: '100%' });
-                grad.appendChild(this.createSVGElement('stop', { offset: '0%', 'stop-color': `hsl(${hue}, 70%, 55%)`, 'stop-opacity': 0.8 }));
-                grad.appendChild(this.createSVGElement('stop', { offset: '100%', 'stop-color': `hsl(${hue}, 70%, 55%)`, 'stop-opacity': 0.1 }));
-                defs.appendChild(grad);
-            });
-        }
-        this.canvas.appendChild(defs);
-
         const chartWidth = width - this.margin.left - this.margin.right;
         const chartHeight = height - this.margin.top - this.margin.bottom;
 
-        // Scales
-        const xDenominator = Math.max(1, this.points.length - 1);
-        const xScale = (i) => (i / xDenominator) * chartWidth;
-        const maxVal = Math.max(...this.points.map(p => p.total));
+        const svg = d3.select(this.canvas);
+        svg.selectAll("*").remove();
 
+        // Containers
+        const g = svg.append("g")
+            .attr("transform", `translate(${this.margin.left},${this.margin.top})`);
+
+        // Scales
+        const xScale = d3.scaleTime()
+            .domain(d3.extent(this.points, d => d.date))
+            .range([0, chartWidth]);
+
+        const maxTotal = d3.max(this.points, d => d.total);
         let yScale;
         if (this.yScaleMode === 'log') {
-            const minLog = 0; // log10(1)
-            const maxLog = Math.log10(maxVal + 1);
-            yScale = (v) => {
-                const logV = Math.log10(v + 1);
-                return chartHeight - ((logV - minLog) / (maxLog - minLog)) * chartHeight;
-            };
+            yScale = d3.scaleLog()
+                .domain([1, maxTotal * 1.1])
+                .range([chartHeight, 0])
+                .clamp(true);
         } else {
-            yScale = maxVal > 0 ? (v) => chartHeight - (v / maxVal) * chartHeight : (v) => chartHeight;
+            yScale = d3.scaleLinear()
+                .domain([0, maxTotal * 1.05])
+                .range([chartHeight, 0]);
         }
 
-        // Render Areas
-        const group = this.createSVGElement('g', { transform: `translate(${this.margin.left}, ${this.margin.top})` });
-
-        this.years.forEach((year, idx) => {
-            const pathData = this.points.map((p, i) => `${xScale(i)},${yScale(p.stack[year].end)}`);
-            const bottomData = this.points.map((p, i) => `${xScale(i)},${yScale(p.stack[year].start)}`).reverse();
-
-            let fillUrl;
+        // Color Logic & Gradients
+        const defs = svg.append("defs");
+        
+        const getBaseColor = (seriesName, seriesIndex) => {
             if (this.vizMode === 'identity') {
-                fillUrl = `url(#grad-${idx === 0 ? 'original' : 'refactored'})`;
-            } else {
-                fillUrl = `url(#grad-${year})`;
+                return (seriesIndex === 0) ? '#3bc7c7' : '#f0a33b';
             }
+            const yearIdx = this.years.indexOf(seriesName);
+            return `hsl(${(180 + yearIdx * 40) % 360}, 70%, 55%)`;
+        };
 
-            const areaPath = this.createSVGElement('path', {
-                d: `M${pathData.join(' L')} L${bottomData.join(' L')} Z`,
-                fill: fillUrl,
-                class: 'chart-area',
-                'data-year': year
-            });
-
-            areaPath.style.opacity = '0';
-            areaPath.style.transition = 'opacity 1.5s ease-out';
-            group.appendChild(areaPath);
-            setTimeout(() => areaPath.style.opacity = '1', 50);
+        // Create gradients for each series
+        const seriesKeys = this.vizMode === 'identity' ? [this.years[0], 'refactored'] : this.years;
+        this.years.forEach((year, i) => {
+            const color = getBaseColor(year, i);
+            const grad = defs.append("linearGradient")
+                .attr("id", `grad-${year}`)
+                .attr("x1", "0%").attr("y1", "0%")
+                .attr("x2", "0%").attr("y2", "100%");
+            
+            grad.append("stop").attr("offset", "0%").attr("stop-color", color).attr("stop-opacity", 0.6);
+            grad.append("stop").attr("offset", "100%").attr("stop-color", color).attr("stop-opacity", 0.05);
         });
 
-        // Legend
-        this.renderLegend();
+        // Specialized gradients for Identity mode if needed
+        if (this.vizMode === 'identity') {
+            ['original', 'refactored'].forEach(id => {
+                const color = id === 'original' ? '#3bc7c7' : '#f0a33b';
+                const grad = defs.append("linearGradient")
+                    .attr("id", `grad-id-${id}`)
+                    .attr("x1", "0%").attr("y1", "0%")
+                    .attr("x2", "0%").attr("y2", "100%");
+                grad.append("stop").attr("offset", "0%").attr("stop-color", color).attr("stop-opacity", 0.6);
+                grad.append("stop").attr("offset", "100%").attr("stop-color", color).attr("stop-opacity", 0.05);
+            });
+        }
 
-        // Axes
-        this.renderAxes(group, chartWidth, chartHeight, xScale, yScale, maxVal);
+        // Stack & Area
+        const stackGenerator = d3.stack()
+            .keys(this.years);
 
-        // Interaction
-        const overlay = this.createSVGElement('rect', { width: chartWidth, height: chartHeight, fill: 'transparent' });
-        overlay.onmousemove = (e) => {
-            const svgRect = this.canvas.getBoundingClientRect();
-            const mouseX = e.clientX - svgRect.left - this.margin.left;
-            const index = Math.round((mouseX / chartWidth) * (this.points.length - 1));
-            if (index >= 0 && index < this.points.length) {
-                this.showTooltip(this.points[index], e.clientX - svgRect.left, e.clientY - svgRect.top);
+        const stackedData = stackGenerator(this.points);
+
+        const areaGenerator = d3.area()
+            .x(d => xScale(d.data.date))
+            .y0(d => yScale(this.yScaleMode === 'log' ? Math.max(1, d[0]) : d[0]))
+            .y1(d => yScale(this.yScaleMode === 'log' ? Math.max(1, d[1]) : d[1]))
+            .curve(d3.curveMonotoneX);
+
+        // Render Layers (Data Join)
+        const layers = g.selectAll(".layer")
+            .data(stackedData, d => d.key);
+
+        const getFill = (d, i) => {
+            if (this.vizMode === 'identity') {
+                const id = i === 0 ? 'original' : 'refactored';
+                return `url(#grad-id-${id})`;
             }
+            return `url(#grad-${d.key})`;
         };
-        overlay.onmouseleave = () => this.hideTooltip();
-        group.appendChild(overlay);
 
-        this.canvas.appendChild(group);
+        layers.enter().append("path")
+            .attr("class", "chart-area layer")
+            .attr("data-year", d => d.key)
+            .attr("fill", getFill)
+            .attr("d", areaGenerator)
+            .style("opacity", 0)
+            .transition()
+            .duration(800)
+            .style("opacity", 1);
+
+        layers.transition()
+            .duration(800)
+            .attr("d", areaGenerator)
+            .attr("fill", getFill);
+
+        layers.exit().remove();
+
+        // Interaction Components (Legend, Axes, Scrubber)
+        this.renderLegend();
+        this.renderAxes(g, chartWidth, chartHeight, xScale, yScale);
+        this.setupInteractivity(g, chartWidth, chartHeight, xScale, yScale);
     }
 
     renderLegend() {
@@ -262,61 +268,121 @@ class TheseusVisualizer {
         items.forEach(item => {
             const div = document.createElement('div');
             div.className = 'legend-item';
+            div.style.cursor = 'pointer';
             div.innerHTML = `
                 <span class="color-dot" style="background: ${item.color}; box-shadow: 0 0 10px ${item.color}44"></span>
                 <span>${item.label}</span>
             `;
+
+            div.onmouseenter = () => {
+                const label = item.label;
+                const firstYear = this.years[0];
+                
+                d3.selectAll(".chart-area").style("opacity", 0.1);
+                
+                if (this.vizMode === 'identity') {
+                    if (label === 'Original Code') {
+                        d3.selectAll(`.chart-area[data-year='${firstYear}']`).style("opacity", 1);
+                    } else {
+                        // All years except the first one
+                        d3.selectAll(".chart-area")
+                            .filter(function() { return d3.select(this).attr("data-year") !== firstYear; })
+                            .style("opacity", 1);
+                    }
+                } else {
+                    d3.selectAll(`.chart-area[data-year='${label}']`).style("opacity", 1);
+                }
+            };
+            
+            div.onmouseleave = () => {
+                d3.selectAll(".chart-area").style("opacity", 1);
+            };
+
             this.legend.appendChild(div);
         });
     }
 
-    renderAxes(group, width, height, xScale, yScale, maxVal) {
-        const formatValue = (v) => {
-            if (v >= 1000000) return `${(v / 1000000).toFixed(1)}M`;
-            if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
-            return Math.round(v);
-        };
+    renderAxes(g, width, height, xScale, yScale) {
+        // Y Axis - Custom Grid & Labels
+        const yAxis = d3.axisLeft(yScale)
+            .ticks(5)
+            .tickFormat(v => {
+                if (v >= 1000000) return `${(v / 1000000).toFixed(1)}M`;
+                if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
+                return Math.round(v);
+            })
+            .tickSize(-width);
 
-        let lastY = -100;
-        const minGap = 20;
+        const yGroup = g.append("g")
+            .attr("class", "axis-y")
+            .call(yAxis);
 
-        if (this.yScaleMode === 'log') {
-            let val = 1;
-            while (val <= maxVal * 10) {
-                const y = yScale(Math.min(val, maxVal));
-                if (y >= 0 && y <= height && Math.abs(y - lastY) > minGap) {
-                    group.appendChild(this.createSVGElement('line', { x1: 0, x2: width, y1: y, y2: y, stroke: '#374151', 'stroke-dasharray': '3,3', 'stroke-opacity': 0.5 }));
-                    const label = this.createSVGElement('text', { x: -10, y: y + 4, 'text-anchor': 'end', fill: '#6b7280', 'font-size': '10px' });
-                    label.textContent = formatValue(val);
-                    group.appendChild(label);
-                    lastY = y;
-                }
-                val *= 10;
-                if (val === 10 && maxVal < 1) break;
-            }
-        } else {
-            const tickCount = 5;
-            for (let i = 0; i <= tickCount; i++) {
-                const val = (i / tickCount) * maxVal;
-                const y = yScale(val);
-                if (Math.abs(y - lastY) > minGap) {
-                    group.appendChild(this.createSVGElement('line', { x1: 0, x2: width, y1: y, y2: y, stroke: '#374151', 'stroke-dasharray': '3,3', 'stroke-opacity': 0.5 }));
-                    const label = this.createSVGElement('text', { x: -10, y: y + 4, 'text-anchor': 'end', fill: '#6b7280', 'font-size': '10px' });
-                    label.textContent = formatValue(val);
-                    group.appendChild(label);
-                    lastY = y;
-                }
-            }
-        }
+        yGroup.selectAll(".tick line")
+            .attr("stroke", "#374151")
+            .attr("stroke-dasharray", "3,3")
+            .attr("stroke-opacity", 0.5);
 
-        const xStep = Math.max(1, Math.floor(this.points.length / 6));
-        this.points.forEach((p, i) => {
-            if (i % xStep === 0 || p.date.endsWith('-01')) {
-                const label = this.createSVGElement('text', { x: xScale(i), y: height + 25, 'text-anchor': 'middle', fill: '#6b7280', 'font-size': '10px' });
-                label.textContent = p.date.endsWith('-01') ? p.date.split('-')[0] : (i % xStep === 0 ? p.date : '');
-                if (label.textContent) group.appendChild(label);
-            }
-        });
+        yGroup.selectAll("text")
+            .attr("x", -10)
+            .attr("fill", "#6b7280")
+            .attr("font-size", "10px")
+            .attr("font-family", "inherit");
+
+        yGroup.select(".domain").remove();
+
+        // X Axis
+        const xAxis = d3.axisBottom(xScale)
+            .ticks(Math.min(this.points.length, 6))
+            .tickFormat(d3.timeFormat("%Y"));
+
+        const xGroup = g.append("g")
+            .attr("class", "axis-x")
+            .attr("transform", `translate(0,${height})`)
+            .call(xAxis);
+
+        xGroup.selectAll("text")
+            .attr("y", 25)
+            .attr("fill", "#6b7280")
+            .attr("font-size", "10px")
+            .attr("font-family", "inherit");
+
+        xGroup.select(".domain").remove();
+        xGroup.selectAll("line").remove();
+    }
+
+    setupInteractivity(g, width, height, xScale, yScale) {
+        const scrubber = g.append("line")
+            .attr("class", "scrubber-line hidden")
+            .attr("y1", 0)
+            .attr("y2", height)
+            .attr("stroke", "rgba(255,255,255,0.2)")
+            .attr("stroke-width", 1);
+
+        const bisect = d3.bisector(d => d.date).left;
+
+        g.append("rect")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("fill", "transparent")
+            .on("mousemove", (event) => {
+                const mouseX = d3.pointer(event)[0];
+                const date = xScale.invert(mouseX);
+                const idx = bisect(this.points, date, 1);
+                const d0 = this.points[idx - 1];
+                const d1 = this.points[idx];
+                if (!d0 || !d1) return;
+                const d = date - d0.date > d1.date - date ? d1 : d0;
+
+                const snappedX = xScale(d.date);
+                scrubber.attr("x1", snappedX).attr("x2", snappedX).classed("hidden", false);
+
+                const svgRect = this.canvas.getBoundingClientRect();
+                this.showTooltip(d, snappedX + this.margin.left, d3.pointer(event)[1] + this.margin.top);
+            })
+            .on("mouseleave", () => {
+                this.hideTooltip();
+                scrubber.classed("hidden", true);
+            });
     }
 
     showTooltip(point, x, y) {
@@ -345,6 +411,10 @@ class TheseusVisualizer {
         this.tooltip.style.left = `${left}px`;
         this.tooltip.style.top = `${top}px`;
 
+        const dateStr = point.date instanceof Date 
+            ? point.date.toISOString().split('T')[0] 
+            : point.date;
+
         const getColor = (idx, year) => {
             if (this.vizMode === 'identity') return idx === 0 ? '#3bc7c7' : '#f0a33b';
             const yearIdx = this.years.indexOf(year);
@@ -354,7 +424,7 @@ class TheseusVisualizer {
         let compositionHtml = '';
         if (this.vizMode === 'identity') {
             const oldestYear = this.years[0];
-            const originalVal = point.composition[oldestYear] || 0;
+            const originalVal = point[oldestYear] || 0;
             const refactoredVal = point.total - originalVal;
 
             compositionHtml += `
@@ -383,7 +453,7 @@ class TheseusVisualizer {
         }
 
         this.years.slice().sort((a, b) => b - a).forEach(year => {
-            const val = point.composition[year] || 0;
+            const val = point[year] || 0;
             if (val > 0) {
                 const yearColor = getColor(null, year);
                 compositionHtml += `
@@ -402,7 +472,7 @@ class TheseusVisualizer {
         });
 
         this.tooltip.innerHTML = `
-            <div class="tooltip-header">Snapshot: ${point.date}</div>
+            <div class="tooltip-header">Snapshot: ${dateStr}</div>
             <div class="tooltip-item" style="margin-bottom: 0.5rem; opacity: 0.8">
                 <span>Total Project Size</span>
                 <strong>${point.total.toLocaleString()} lines</strong>
@@ -417,20 +487,33 @@ class TheseusVisualizer {
     }
 
     updateInsights() {
-        if (!this.currentData || this.currentData.length === 0) return;
-        const first = this.currentData[0];
-        const last = this.currentData[this.currentData.length - 1];
+        if (!this.points || this.points.length === 0) return;
+        const first = this.points[0];
+        const last = this.points[this.points.length - 1];
 
-        let originalYear = this.years[0];
-        if (!originalYear || first.total_lines === 0) {
-            document.getElementById('percent-replaced').textContent = '--';
-        } else {
-            const originalLinesInFirst = first.composition[originalYear] || 0;
-            const originalLinesInLast = last.composition[originalYear] || 0;
+        // 1. Birth Year (Genesis)
+        const birthYear = this.years[0];
+        document.getElementById('birth-year').textContent = birthYear;
+
+        // 2. Oldest Surviving Year
+        let oldestSurviving = '--';
+        for (const year of this.years) {
+            if (last[year] > 0) {
+                oldestSurviving = year;
+                break;
+            }
+        }
+        document.getElementById('oldest-line').textContent = oldestSurviving;
+
+        // 3. Entropy Ratio
+        if (birthYear && first.total > 0) {
+            const originalLinesInFirst = first[birthYear] || 0;
+            const originalLinesInLast = last[birthYear] || 0;
             const replaced = ((originalLinesInFirst - originalLinesInLast) / originalLinesInFirst) * 100;
             document.getElementById('percent-replaced').textContent = `${Math.min(100, Math.max(0, replaced)).toFixed(1)}%`;
+        } else {
+            document.getElementById('percent-replaced').textContent = '--';
         }
-        document.getElementById('oldest-line').textContent = this.years[0];
     }
 
     createSVGElement(tag, attrs = {}) {
