@@ -440,7 +440,7 @@ class TheseusVisualizer {
                 </div>
                 <div class="value-group">
                     <strong>${originalVal.toLocaleString()}</strong>
-                    <span class="percent-tag">${((originalVal / point.total) * 100).toFixed(1)}%</span>
+                    <span class="percent-tag">${point.total > 0 ? ((originalVal / point.total) * 100).toFixed(1) : '0.0'}%</span>
                 </div>
             </div>
             <div class="tooltip-item">
@@ -450,7 +450,7 @@ class TheseusVisualizer {
                 </div>
                 <div class="value-group">
                     <strong>${evolutionVal.toLocaleString()}</strong>
-                    <span class="percent-tag">${((evolutionVal / point.total) * 100).toFixed(1)}%</span>
+                    <span class="percent-tag">${point.total > 0 ? ((evolutionVal / point.total) * 100).toFixed(1) : '0.0'}%</span>
                 </div>
             </div>
         `;
