@@ -1,13 +1,13 @@
 [
   {
-    "name": "react",
-    "file": "react_data.json",
-    "description": "Component-based JavaScript library for building user interfaces."
-  },
-  {
     "name": "langchain",
     "file": "langchain_data.json",
     "description": "Framework for developing LLM-driven applications and agents."
+  },
+  {
+    "name": "react",
+    "file": "react_data.json",
+    "description": "Component-based JavaScript library for building user interfaces."
   },
   {
     "name": "numpy",
