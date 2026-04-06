@@ -184,26 +184,91 @@ def analyze_snapshots(repo_path: str, commit_hash: str) -> dict[str, int]:
     return dict(age_distribution)
 
 
-def load_existing_state(json_fname: str) -> list[dict]:
+def load_existing_state(json_fname: str) -> dict:
     """
-    Load the existing historical data to prevent redundant re-calculations.
+    Load the existing historical data supporting both old list and new object schemas.
 
     :param json_fname: Path to the existing JSON file containing the historical data.
-    :return: A list of dictionaries with the historical data.
+    :return: A dictionary with 'snapshots' and 'fossils'.
     """
     if os.path.exists(json_fname):
         try:
             with open(json_fname, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                if isinstance(data, list):
+                    return {"snapshots": data, "fossils": {}}
+                return data
         except json.JSONDecodeError:
             logger.warning("%s is corrupted, starting fresh.", json_fname)
-            return []
-    return []
+            return {"snapshots": [], "fossils": {}}
+    return {"snapshots": [], "fossils": {}}
 
 
-def _atomic_write_json(json_path: str, data: list[dict]) -> None:
+def _get_fossil_metadata(repo_path: str, commit_hash: str) -> dict:
+    """
+    Find the oldest line in the repository at a specific commit.
+    """
+    _run_command(["git", "checkout", commit_hash], cwd=repo_path)
+    files_output = _run_command(["git", "ls-files"], cwd=repo_path)
+    files = [
+        f
+        for f in files_output.splitlines()
+        if os.path.isfile(os.path.join(repo_path, f))
+    ]
+
+    oldest_fossil = {
+        "timestamp": 2147483647,
+        "file": "",
+        "content": "",
+        "year": "",
+        "commit": "",
+        "line": 0,
+    }
+
+    for file in files:
+        try:
+            blame_output = _run_command(
+                ["git", "blame", "--line-porcelain", file], cwd=repo_path
+            )
+            current_commit_data = {}
+            line_num = 0
+
+            for line in blame_output.splitlines():
+                if line.startswith("\t"):
+                    line_num += 1
+                    timestamp = current_commit_data.get("author-time")
+                    if timestamp and timestamp < oldest_fossil["timestamp"]:
+                        oldest_fossil["timestamp"] = timestamp
+                        oldest_fossil["file"] = file
+                        oldest_fossil["content"] = line.lstrip("\t").strip()
+                        oldest_fossil["year"] = datetime.fromtimestamp(
+                            timestamp, timezone.utc
+                        ).strftime("%Y")
+                        oldest_fossil["commit"] = current_commit_data.get("commit", "")[
+                            :7
+                        ]
+                        oldest_fossil["line"] = line_num
+                else:
+                    if line and line[0] != "\t":
+                        commit_hash = line.split(" ")[0]
+                        if len(commit_hash) == 40:
+                            current_commit_data["commit"] = commit_hash
+                        elif line.startswith("author-time "):
+                            parts = line.split(" ")
+                            if len(parts) >= 2:
+                                current_commit_data["author-time"] = int(parts[1])
+        except Exception:
+            continue
+
+    return oldest_fossil
+
+
+def _atomic_write_json(
+    json_path: str, snapshots: list[dict], fossils: dict = None
+) -> None:
     """Write JSON data atomically and minified to prevent corruption and save space."""
     tmp_path = json_path + ".tmp"
+    data = {"snapshots": snapshots, "fossils": fossils or {}}
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, separators=(",", ":"))
     os.replace(tmp_path, json_path)
@@ -240,8 +305,10 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
                     continue
             _run_command(["git", "pull"], cwd=temp_repo_path)
 
-        historical_data = load_existing_state(output_json_path)
-        processed_periods = set(item["snapshot_date"] for item in historical_data)
+        state = load_existing_state(output_json_path)
+        historical_snapshots = state["snapshots"]
+        fossils = state["fossils"]
+        processed_periods = set(item["snapshot_date"] for item in historical_snapshots)
 
         all_snapshots = get_snapshots(temp_repo_path)
         new_snapshots = [
@@ -311,16 +378,39 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
             total_new_data.extend(year_data)
             year_elapsed = time.perf_counter() - year_start
 
-            final_dataset = historical_data + total_new_data
-            final_dataset.sort(key=lambda x: x["snapshot_date"])
-            _atomic_write_json(output_json_path, final_dataset)
+            final_snapshots = historical_snapshots + total_new_data
+            final_snapshots.sort(key=lambda x: x["snapshot_date"])
+
+            # Updated Fossil Stage: Logic for Genesis vs Survivor
+            # Recalculate if fossils are missing or missing key fields (commit, file, line)
+            needs_genesis = not fossils.get("genesis", {}).get("commit")
+            needs_survivor = not fossils.get("survivor", {}).get("commit")
+
+            if final_snapshots and (needs_genesis or needs_survivor):
+                logger.info(
+                    "[%s] Computing targeted fossils (Genesis and Survivor)", repo_name
+                )
+
+                if needs_genesis:
+                    genesis_commit = all_snapshots[0][1]
+                    fossils["genesis"] = _get_fossil_metadata(
+                        temp_repo_path, genesis_commit
+                    )
+
+                if needs_survivor:
+                    survivor_commit = all_snapshots[-1][1]
+                    fossils["survivor"] = _get_fossil_metadata(
+                        temp_repo_path, survivor_commit
+                    )
+
+            _atomic_write_json(output_json_path, final_snapshots, fossils)
 
             logger.info(
-                "[%s] Completed year %s in %.2f seconds. Wrote %d total snapshots to disk.",
+                "[%s] Completed year %s in %.2f seconds. Wrote %d snapshots to disk.",
                 repo_name,
                 year,
                 year_elapsed,
-                len(final_dataset),
+                len(final_snapshots),
             )
 
     finally:

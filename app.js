@@ -23,6 +23,7 @@ class TheseusVisualizer {
         this.points = [];
         this.vizMode = 'chronological'; // 'chronological' | 'identity'
         this.yScaleMode = 'linear'; // 'linear' | 'log'
+        this.fossils = {};
 
         this.init();
     }
@@ -100,7 +101,16 @@ class TheseusVisualizer {
 
             const response = await fetch(`data/${repoInfo.file}`);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            this.currentData = await response.json();
+            const rawData = await response.json();
+
+            // Handle both list and object schemas
+            if (Array.isArray(rawData)) {
+                this.currentData = rawData;
+                this.fossils = {};
+            } else {
+                this.currentData = rawData.snapshots || [];
+                this.fossils = rawData.fossils || {};
+            }
 
             this.currentRepo = repoName;
             this.updateActiveBtn(repoName);
@@ -108,6 +118,7 @@ class TheseusVisualizer {
             this.processData();
             this.renderChart();
             this.updateInsights();
+            this.renderFossils();
         } catch (err) {
             console.error(err);
             this.showError(`Failed to load data for ${repoName}`);
@@ -584,6 +595,27 @@ class TheseusVisualizer {
             }
         }
         document.getElementById('transformation-date').textContent = dropDate;
+    }
+
+    renderFossils() {
+        const genesis = this.fossils.genesis || {};
+        const survivor = this.fossils.survivor || {};
+
+        // Genesis (The Origin)
+        document.getElementById('genesis-year').textContent = genesis.year || '----';
+        document.getElementById('genesis-file').textContent = genesis.file 
+            ? `${genesis.file}:${genesis.line}` 
+            : '--';
+        document.getElementById('genesis-content').textContent = genesis.content || 'No fossil data';
+        document.getElementById('genesis-commit').textContent = genesis.commit || '';
+
+        // Survivor (The Current)
+        document.getElementById('survivor-year').textContent = survivor.year || '----';
+        document.getElementById('survivor-file').textContent = survivor.file 
+            ? `${survivor.file}:${survivor.line}` 
+            : '--';
+        document.getElementById('survivor-content').textContent = survivor.content || 'No fossil data';
+        document.getElementById('survivor-commit').textContent = survivor.commit || '';
     }
 
     createSVGElement(tag, attrs = {}) {

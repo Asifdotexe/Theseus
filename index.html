@@ -11,6 +11,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap"
         rel="stylesheet">
+    <link rel="icon" type="image/png" href="assets/theseus_favicon.png">
     <link rel="stylesheet" href="style.css">
     <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
@@ -125,6 +126,34 @@
                 <p class="card-text">This data is generated monthly via a static analysis pipeline. It dynamically scans
                     the repository history and outputs a structured JSON file to minimize visual overhead in the
                     browser.</p>
+            </div>
+        </section>
+
+        <section class="fossil-finder glass-panel">
+            <h2 class="section-title">The Hall of Fossils</h2>
+            <div class="fossil-grid">
+                <div class="fossil-card" id="fossil-genesis">
+                    <div class="fossil-header">
+                        <span class="fossil-label">The Genesis Fragment</span>
+                        <span class="fossil-year" id="genesis-year">----</span>
+                    </div>
+                    <div class="fossil-meta">
+                        <span id="genesis-file">--</span>
+                        <span class="fossil-commit" id="genesis-commit"></span>
+                    </div>
+                    <div class="fossil-code"><code id="genesis-content">Loading ancestral code...</code></div>
+                </div>
+                <div class="fossil-card" id="fossil-survivor">
+                    <div class="fossil-header">
+                        <span class="fossil-label">The Immortal Line</span>
+                        <span class="fossil-year" id="survivor-year">----</span>
+                    </div>
+                    <div class="fossil-meta">
+                        <span id="survivor-file">--</span>
+                        <span class="fossil-commit" id="survivor-commit"></span>
+                    </div>
+                    <div class="fossil-code"><code id="survivor-content">Scanning for survivors...</code></div>
+                </div>
             </div>
         </section>
 
