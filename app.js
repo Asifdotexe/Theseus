@@ -18,7 +18,7 @@ class TheseusVisualizer {
         this.scaleToggle = document.getElementById('scale-toggle');
         this.loadingState = document.getElementById('chart-loading');
 
-        this.margin = { top: 10, right: 0, bottom: 30, left: 50 };
+        this.margin = { top: 10, right: 20, bottom: 50, left: 60 };
         this.years = [];
         this.points = [];
         this.vizMode = 'chronological'; // 'chronological' | 'identity'
@@ -361,6 +361,26 @@ class TheseusVisualizer {
 
         xGroup.select(".domain").attr("stroke", "rgba(255, 255, 255, 0.1)");
         xGroup.selectAll(".tick line").attr("stroke", "rgba(255, 255, 255, 0.1)");
+
+        // Axis Labels
+        g.append("text")
+            .attr("class", "axis-label")
+            .attr("x", width / 2)
+            .attr("y", height + 40)
+            .attr("fill", "#6b7280")
+            .attr("font-size", "12px")
+            .attr("text-anchor", "middle")
+            .text("Time");
+
+        g.append("text")
+            .attr("class", "axis-label")
+            .attr("transform", "rotate(-90)")
+            .attr("x", -height / 2)
+            .attr("y", -45)
+            .attr("fill", "#6b7280")
+            .attr("font-size", "12px")
+            .attr("text-anchor", "middle")
+            .text("Lines of Code");
     }
 
     setupInteractivity(g, width, height, xScale, yScale) {
@@ -518,6 +538,20 @@ class TheseusVisualizer {
         } else {
             document.getElementById('percent-replaced').textContent = '--';
         }
+
+        // Death counter: count times when original code dropped to 0
+        let deathCount = 0;
+        let wasDead = false;
+        for (const point of this.points) {
+            const origLines = point[birthYear] || 0;
+            if (origLines === 0 && !wasDead) {
+                deathCount++;
+                wasDead = true;
+            } else if (origLines > 0) {
+                wasDead = false;
+            }
+        }
+        document.getElementById('death-count').textContent = deathCount;
 
         // 4. Modernization Velocity (Δ Old Code / Δ Time)
         const lastDate = new Date(last.date);

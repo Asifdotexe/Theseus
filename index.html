@@ -1,19 +1,19 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ship of Theseus | Code Visualizer</title>
-    <link rel="icon" type="image/png" href="assets/theseus_favicon.png">
+    <link rel="icon" type="image/png" href="assets/theseus_favicon.png" />
     <!-- Typography: Playfair Display (Serif) & JetBrains Mono (Mono) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
         href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap"
-        rel="stylesheet">
-    <link rel="icon" type="image/png" href="assets/theseus_favicon.png">
-    <link rel="stylesheet" href="style.css">
+        rel="stylesheet" />
+    <link rel="icon" type="image/png" href="assets/theseus_favicon.png" />
+    <link rel="stylesheet" href="style.css" />
     <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 
@@ -24,7 +24,10 @@
         <header class="hero">
             <div class="author-badge">Project by Asif Sayyed</div>
             <h1 class="title">The Ship of Theseus</h1>
-            <p class="subtitle">Track how much of your codebase's original code still survives over time.</p>
+            <p class="subtitle">
+                Track how much of your codebase's original code still
+                survives over time.
+            </p>
 
             <div class="controls-bar">
                 <div id="repo-selector" class="selector-pill" role="group" aria-label="Repository Selection">
@@ -35,16 +38,24 @@
                     <div class="settings-group">
                         <span class="control-label">Mode:</span>
                         <div id="viz-mode-toggle" class="selector-pill small" role="group">
-                            <button class="mode-btn active" data-mode="chronological">Chrono</button>
-                            <button class="mode-btn" data-mode="identity">Identity</button>
+                            <button class="mode-btn active" data-mode="chronological">
+                                Chrono
+                            </button>
+                            <button class="mode-btn" data-mode="identity">
+                                Identity
+                            </button>
                         </div>
                     </div>
 
                     <div class="settings-group">
                         <span class="control-label">Scale:</span>
                         <div id="scale-toggle" class="selector-pill small" role="group">
-                            <button class="scale-btn active" data-scale="linear">Linear</button>
-                            <button class="scale-btn" data-scale="log">Log</button>
+                            <button class="scale-btn active" data-scale="linear">
+                                Linear
+                            </button>
+                            <button class="scale-btn" data-scale="log">
+                                Log
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -54,7 +65,9 @@
         </header>
 
         <section class="visualization-canvas">
-            <div id="chart-loading" class="loading-state">[ Scanning repository history... ]</div>
+            <div id="chart-loading" class="loading-state">
+                [ Scanning repository history... ]
+            </div>
             <div id="chart-error" class="error-banner hidden"></div>
 
             <div id="chart-container" class="chart-wrapper">
@@ -68,7 +81,8 @@
             <div class="insight-card glass-panel" id="card-evolution">
                 <h3 class="card-title">
                     How much has changed?
-                    <span class="help-icon" data-tooltip="Percentage of code from the first snapshot that has been rewritten or removed">?</span>
+                    <span class="help-icon"
+                        data-tooltip="Percentage of code from the first snapshot that has been rewritten or removed">?</span>
                 </h3>
                 <div class="card-content">
                     <p class="metric-value" id="percent-replaced">--</p>
@@ -78,15 +92,18 @@
             <div class="insight-card glass-panel" id="card-ancestry">
                 <h3 class="card-title">
                     How old is the code?
-                    <span class="help-icon" data-tooltip="Earliest year when any code in the current codebase was originally written">?</span>
+                    <span class="help-icon"
+                        data-tooltip="Earliest year when any code in the current codebase was originally written">?</span>
                 </h3>
                 <div class="card-content-split">
                     <div class="metric-group">
                         <p class="metric-value small" id="birth-year">--</p>
-                        <p class="metric-label">Code started</p>
+                        <p class="metric-label">Repository birth year</p>
                     </div>
                     <div class="metric-group">
-                        <p class="metric-value small" id="oldest-line">--</p>
+                        <p class="metric-value small" id="oldest-line">
+                            --
+                        </p>
                         <p class="metric-label">Earliest code still here</p>
                     </div>
                 </div>
@@ -94,7 +111,8 @@
             <div class="insight-card glass-panel" id="card-transformation">
                 <h3 class="card-title">
                     When was the biggest rewrite?
-                    <span class="help-icon" data-tooltip="Date when the largest single drop in original code occurred">?</span>
+                    <span class="help-icon"
+                        data-tooltip="Date when the largest single drop in original code occurred">?</span>
                 </h3>
                 <div class="card-content">
                     <p class="metric-value" id="transformation-date">--</p>
@@ -104,21 +122,38 @@
             <div class="insight-card glass-panel" id="card-peak">
                 <h3 class="card-title">
                     Which year's code survives most?
-                    <span class="help-icon" data-tooltip="Year of origin with the most lines still present in today's codebase">?</span>
+                    <span class="help-icon"
+                        data-tooltip="Year of origin with the most lines still present in today's codebase">?</span>
                 </h3>
                 <div class="card-content">
                     <p class="metric-value" id="peak-year">--</p>
-                    <p class="metric-label">Year with most surviving code</p>
+                    <p class="metric-label">
+                        Year with most surviving code
+                    </p>
                 </div>
             </div>
             <div class="insight-card glass-panel" id="card-velocity">
                 <h3 class="card-title">
                     How fast is code being replaced?
-                    <span class="help-icon" data-tooltip="Average old code lines replaced per month over the last 6 months">?</span>
+                    <span class="help-icon"
+                        data-tooltip="Average old code lines replaced per month over the last 6 months">?</span>
                 </h3>
                 <div class="card-content">
-                    <p class="metric-value" id="modernization-velocity">--</p>
+                    <p class="metric-value" id="modernization-velocity">
+                        --
+                    </p>
                     <p class="metric-label">Lines replaced per month</p>
+                </div>
+            </div>
+            <div class="insight-card glass-panel" id="card-deaths">
+                <h3 class="card-title">
+                    How many times did the original codebase die?
+                    <span class="help-icon"
+                        data-tooltip="Number of times 100% of original code was replaced - the codebase was completely reborn">?</span>
+                </h3>
+                <div class="card-content">
+                    <p class="metric-value" id="death-count">--</p>
+                    <p class="metric-label">Complete rebuilds</p>
                 </div>
             </div>
             <div class="insight-card glass-panel" id="card-age">
@@ -136,13 +171,20 @@
         <section class="info-grid">
             <div class="info-card glass-panel">
                 <h3 class="card-title">How to read this chart</h3>
-                <p class="card-text">The X-axis shows time. The Y-axis shows total lines of code.
-                    Each colored band represents code that was originally written in a specific year.</p>
+                <p class="card-text">
+                    The X-axis shows time. The Y-axis shows total lines of
+                    code. Each colored band represents code that was
+                    originally written in a specific year.
+                </p>
             </div>
             <div class="info-card glass-panel">
                 <h3 class="card-title">How the data is collected</h3>
-                <p class="card-text">Every month, we analyze the repository and use git blame to determine when each line was last modified.
-                    This gives us a snapshot of how much original code survives over time.</p>
+                <p class="card-text">
+                    Every month, we analyze the repository and use git blame
+                    to determine when each line was last modified. This
+                    gives us a snapshot of how much original code survives
+                    over time.
+                </p>
             </div>
         </section>
 
@@ -158,7 +200,9 @@
                         <span id="genesis-file">--</span>
                         <span class="fossil-commit" id="genesis-commit"></span>
                     </div>
-                    <div class="fossil-code"><code id="genesis-content">Loading...</code></div>
+                    <div class="fossil-code">
+                        <code id="genesis-content">Loading...</code>
+                    </div>
                 </div>
                 <div class="fossil-card" id="fossil-survivor">
                     <div class="fossil-header">
@@ -169,7 +213,9 @@
                         <span id="survivor-file">--</span>
                         <span class="fossil-commit" id="survivor-commit"></span>
                     </div>
-                    <div class="fossil-code"><code id="survivor-content">Loading...</code></div>
+                    <div class="fossil-code">
+                        <code id="survivor-content">Loading...</code>
+                    </div>
                 </div>
             </div>
         </section>
@@ -177,37 +223,59 @@
         <section class="personal-narrative">
             <h2 class="narrative-title">Where did this all come from?</h2>
             <div class="narrative-content">
-                <p>Honestly, I'm just a guy who spent a bit too much time reading Plato and not enough time touching
-                    grass. This project is basically what happens when you combine a bit of a philosophy obsession with
-                    a healthy dose of data engineering. I've always felt that data isn't just numbers in a JSON file,
-                    it's a living record of evolution, like a digital ancestry.</p>
-
-                <p>I wanted to see if I could apply the <a
-                        href="https://second-brain.asifdotexe.workers.dev/?stackedNotes=ship-of-theseus" target="_blank"
-                        class="philosophy-link">Ship of Theseus</a> paradox to software. If you haven't heard of it,
-                    it's an ancient Greek thought experiment that asks: if you replace every single part of a ship,
-                    plank by plank, is it still the same ship? Or is it just a new ship wearing its ancestor's name tag?
+                <p>
+                    Honestly, I'm just a guy who spent a bit too much time
+                    reading Plato and not enough time touching grass. This
+                    project is basically what happens when you combine a bit
+                    of a philosophy obsession with a healthy dose of data
+                    engineering. I've always felt that data isn't just
+                    numbers in a JSON file, it's a living record of
+                    evolution, like a digital ancestry.
                 </p>
 
-                <p>We do this to codebases all the time. We refactor, delete, and rewrite until the original 2013
-                    'timber' is long gone. This tool is my way of staring at that <strong>Identity Problem</strong>
-                    without having to write a 50-page thesis. It gives us a window into how our projects are constantly
-                    being reborn. Is it still the same repo? I have no idea, but the data is fascinating, and looking at
-                    entropy is better than staring at a blank terminal.</p>
+                <p>
+                    I wanted to see if I could apply the
+                    <a href="https://second-brain.asifdotexe.workers.dev/?stackedNotes=ship-of-theseus" target="_blank"
+                        class="philosophy-link">Ship of Theseus</a>
+                    paradox to software. If you haven't heard of it, it's an
+                    ancient Greek thought experiment that asks: if you
+                    replace every single part of a ship, plank by plank, is
+                    it still the same ship? Or is it just a new ship wearing
+                    its ancestor's name tag?
+                </p>
 
-                <p class="cta-text">If you find this digital paradox as fascinating as I do, consider dropping a ⭐ on <a
-                        href="https://github.com/Asifdotexe/Theseus" target="_blank" class="philosophy-link">GitHub</a>.
-                    It helps keep the ship afloat!</p>
+                <p>
+                    We do this to codebases all the time. We refactor,
+                    delete, and rewrite until the original 2013 'timber' is
+                    long gone. This tool is my way of staring at that
+                    <strong>Identity Problem</strong> without having to
+                    write a 50-page thesis. It gives us a window into how
+                    our projects are constantly being reborn. Is it still
+                    the same repo? I have no idea, but the data is
+                    fascinating, and looking at entropy is better than
+                    staring at a blank terminal.
+                </p>
 
-                <div class="signature">— Asif Sayyed<br>
-                    <span class="signature-subtitle">Data Scientist who also happens to read far too much
-                        philosophy</span>
+                <p class="cta-text">
+                    If you find this digital paradox as fascinating as I do,
+                    consider dropping a ⭐ on
+                    <a href="https://github.com/Asifdotexe/Theseus" target="_blank" class="philosophy-link">GitHub</a>.
+                    It helps keep the ship afloat!
+                </p>
+
+                <div class="signature">
+                    — Asif Sayyed<br />
+                    <span class="signature-subtitle">Data Scientist who also happens to read far too
+                        much philosophy</span>
                 </div>
             </div>
         </section>
 
         <footer class="footer">
-            <p class="footer-text">&copy; 2026 Made by Asif Sayyed. Reflecting the nature of change.</p>
+            <p class="footer-text">
+                &copy; 2026 Made by Asif Sayyed. Reflecting the nature of
+                change.
+            </p>
         </footer>
     </main>
 
