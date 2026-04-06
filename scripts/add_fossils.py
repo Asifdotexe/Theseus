@@ -3,6 +3,7 @@ import os
 import subprocess
 import logging
 from pathlib import Path
+from calendar import monthrange
 from datetime import datetime, timezone
 from collections import defaultdict
 
@@ -25,21 +26,23 @@ def _run_command(cmd, cwd=None):
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
         logger.error(f"Command failed: {' '.join(cmd)} - {e.stderr}")
-        raise RuntimeError(f"Command failed: {e.stderr}")
+        raise RuntimeError(f"Command failed: {e.stderr}") from e
 
 
 def get_snapshot_commit(repo_path, date_str):
     """Find the commit closest to the given date (YYYY-MM)."""
-    search_date = f"{date_str}-31"
     try:
+        year, month = map(int, date_str.split("-"))
+        _, last_day = monthrange(year, month)
+        search_date = f"{year}-{month:02d}-{last_day}"
         commit = _run_command(
             ["git", "rev-list", "-n", "1", f"--before={search_date}", "HEAD"],
             cwd=repo_path,
         )
         if commit:
             return commit
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Error finding commit for {date_str}: {e}")
     return None
 
 

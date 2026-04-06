@@ -134,6 +134,9 @@ class TheseusVisualizer {
     }
 
     processData() {
+        // Sort snapshots chronologically
+        this.currentData.sort((a, b) => new Date(a.snapshot_date).getTime() - new Date(b.snapshot_date).getTime());
+
         const yearSet = new Set();
         this.currentData.forEach(d => {
             Object.keys(d.composition).forEach(y => yearSet.add(y));
@@ -403,8 +406,13 @@ class TheseusVisualizer {
                 const idx = bisect(this.points, date, 1);
                 const d0 = this.points[idx - 1];
                 const d1 = this.points[idx];
-                if (!d0 || !d1) return;
-                const d = date - d0.date > d1.date - date ? d1 : d0;
+                
+                // Handle single-point or edge cases
+                if (!d0 && !d1) return;
+                let d;
+                if (!d0) d = d1;
+                else if (!d1) d = d0;
+                else d = date - d0.date > d1.date - date ? d1 : d0;
 
                 const snappedX = xScale(d.date);
                 scrubber.attr("x1", snappedX).attr("x2", snappedX).classed("hidden", false);
@@ -532,9 +540,13 @@ class TheseusVisualizer {
 
         if (birthYear && first.total > 0) {
             const originalLinesInFirst = first[birthYear] || 0;
-            const originalLinesInLast = last[birthYear] || 0;
-            const replaced = ((originalLinesInFirst - originalLinesInLast) / originalLinesInFirst) * 100;
-            document.getElementById('percent-replaced').textContent = `${Math.min(100, Math.max(0, replaced)).toFixed(1)}%`;
+            if (originalLinesInFirst > 0) {
+                const originalLinesInLast = last[birthYear] || 0;
+                const replaced = ((originalLinesInFirst - originalLinesInLast) / originalLinesInFirst) * 100;
+                document.getElementById('percent-replaced').textContent = `${Math.min(100, Math.max(0, replaced)).toFixed(1)}%`;
+            } else {
+                document.getElementById('percent-replaced').textContent = '0.0%';
+            }
         } else {
             document.getElementById('percent-replaced').textContent = '--';
         }
@@ -597,6 +609,8 @@ class TheseusVisualizer {
             });
             const meanAge = totalAge / totalLines;
             document.getElementById('mean-code-age').textContent = `${meanAge.toFixed(1)} yrs`;
+        } else {
+            document.getElementById('mean-code-age').textContent = '0.0 yrs';
         }
 
         // 6. Peak Preservation (Largest legacy year)

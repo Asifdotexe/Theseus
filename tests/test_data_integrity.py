@@ -63,9 +63,15 @@ def test_data_integrity_optimized_schema():
             assert "content" in fossil_data, (
                 f"Error in {json_file.name}: Fossil '{fossil_type}' missing 'content' field"
             )
-            # New optional fields: commit, line, file
+            # New required fields: commit, line, file
             assert "file" in fossil_data, (
                 f"Error in {json_file.name}: Fossil '{fossil_type}' missing 'file' field"
+            )
+            assert "commit" in fossil_data, (
+                f"Error in {json_file.name}: Fossil '{fossil_type}' missing 'commit' field"
+            )
+            assert "line" in fossil_data, (
+                f"Error in {json_file.name}: Fossil '{fossil_type}' missing 'line' field"
             )
 
 

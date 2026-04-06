@@ -15,6 +15,7 @@ import time
 from collections import defaultdict
 from datetime import datetime, timezone
 from itertools import groupby
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -250,9 +251,9 @@ def _get_fossil_metadata(repo_path: str, commit_hash: str) -> dict:
                         oldest_fossil["line"] = line_num
                 else:
                     if line and line[0] != "\t":
-                        commit_hash = line.split(" ")[0]
-                        if len(commit_hash) == 40:
-                            current_commit_data["commit"] = commit_hash
+                        parsed_commit_hash = line.split(" ")[0]
+                        if len(parsed_commit_hash) == 40:
+                            current_commit_data["commit"] = parsed_commit_hash
                         elif line.startswith("author-time "):
                             parts = line.split(" ")
                             if len(parts) >= 2:
@@ -264,7 +265,7 @@ def _get_fossil_metadata(repo_path: str, commit_hash: str) -> dict:
 
 
 def _atomic_write_json(
-    json_path: str, snapshots: list[dict], fossils: dict = None
+    json_path: str, snapshots: list[dict], fossils: Optional[dict] = None
 ) -> None:
     """Write JSON data atomically and minified to prevent corruption and save space."""
     tmp_path = json_path + ".tmp"
