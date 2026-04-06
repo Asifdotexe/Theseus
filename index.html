@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ship of Theseus | Code Visualizer</title>
+    <link rel="icon" type="image/png" href="assets/theseus_favicon.png">
     <!-- Typography: Playfair Display (Serif) & JetBrains Mono (Mono) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,8 +24,7 @@
         <header class="hero">
             <div class="author-badge">Project by Asif Sayyed</div>
             <h1 class="title">The Ship of Theseus</h1>
-            <p class="subtitle">Does a codebase remain the same if every line is replaced? A monthly pulse on software
-                entropy.</p>
+            <p class="subtitle">Track how much of your codebase's original code still survives over time.</p>
 
             <div class="controls-bar">
                 <div id="repo-selector" class="selector-pill" role="group" aria-label="Repository Selection">
@@ -66,51 +66,69 @@
 
         <section class="insights-grid">
             <div class="insight-card glass-panel" id="card-evolution">
-                <h3 class="card-title">Is this still the same codebase?</h3>
+                <h3 class="card-title">
+                    How much has changed?
+                    <span class="help-icon" data-tooltip="Percentage of code from the first snapshot that has been rewritten or removed">?</span>
+                </h3>
                 <div class="card-content">
                     <p class="metric-value" id="percent-replaced">--</p>
                     <p class="metric-label">of original code replaced</p>
                 </div>
             </div>
             <div class="insight-card glass-panel" id="card-ancestry">
-                <h3 class="card-title">How deep is the code's heritage?</h3>
+                <h3 class="card-title">
+                    How old is the code?
+                    <span class="help-icon" data-tooltip="Earliest year when any code in the current codebase was originally written">?</span>
+                </h3>
                 <div class="card-content-split">
                     <div class="metric-group">
                         <p class="metric-value small" id="birth-year">--</p>
-                        <p class="metric-label">Repository Genesis</p>
+                        <p class="metric-label">Code started</p>
                     </div>
                     <div class="metric-group">
                         <p class="metric-value small" id="oldest-line">--</p>
-                        <p class="metric-label">Oldest Surviving</p>
+                        <p class="metric-label">Earliest code still here</p>
                     </div>
                 </div>
             </div>
             <div class="insight-card glass-panel" id="card-transformation">
-                <h3 class="card-title">When was the largest refactor made?</h3>
+                <h3 class="card-title">
+                    When was the biggest rewrite?
+                    <span class="help-icon" data-tooltip="Date when the largest single drop in original code occurred">?</span>
+                </h3>
                 <div class="card-content">
                     <p class="metric-value" id="transformation-date">--</p>
-                    <p class="metric-label">Date of largest legacy replacement</p>
+                    <p class="metric-label">Biggest rewrite date</p>
                 </div>
             </div>
             <div class="insight-card glass-panel" id="card-peak">
-                <h3 class="card-title">Which era of origin remains the most resilient?</h3>
+                <h3 class="card-title">
+                    Which year's code survives most?
+                    <span class="help-icon" data-tooltip="Year of origin with the most lines still present in today's codebase">?</span>
+                </h3>
                 <div class="card-content">
                     <p class="metric-value" id="peak-year">--</p>
-                    <p class="metric-label">Most resilient legacy year</p>
+                    <p class="metric-label">Year with most surviving code</p>
                 </div>
             </div>
             <div class="insight-card glass-panel" id="card-velocity">
-                <h3 class="card-title">How fast is the codebase being rebuilt?</h3>
+                <h3 class="card-title">
+                    How fast is code being replaced?
+                    <span class="help-icon" data-tooltip="Average old code lines replaced per month over the last 6 months">?</span>
+                </h3>
                 <div class="card-content">
                     <p class="metric-value" id="modernization-velocity">--</p>
-                    <p class="metric-label">Lines / Month replaced</p>
+                    <p class="metric-label">Lines replaced per month</p>
                 </div>
             </div>
             <div class="insight-card glass-panel" id="card-age">
-                <h3 class="card-title">How long has the average line of current code endured?</h3>
+                <h3 class="card-title">
+                    What's the average code age?
+                    <span class="help-icon" data-tooltip="Average age of all code lines in today's codebase">?</span>
+                </h3>
                 <div class="card-content">
                     <p class="metric-value" id="mean-code-age">--</p>
-                    <p class="metric-label">Weighted average age</p>
+                    <p class="metric-label">Average code age</p>
                 </div>
             </div>
         </section>
@@ -118,41 +136,40 @@
         <section class="info-grid">
             <div class="info-card glass-panel">
                 <h3 class="card-title">How to read this chart</h3>
-                <p class="card-text">The X-axis represents time moving forward. The Y-axis shows total lines of code.
-                    Each colored band represents the surviving code originally written in a specific year.</p>
+                <p class="card-text">The X-axis shows time. The Y-axis shows total lines of code.
+                    Each colored band represents code that was originally written in a specific year.</p>
             </div>
             <div class="info-card glass-panel">
-                <h3 class="card-title">The Architecture</h3>
-                <p class="card-text">This data is generated monthly via a static analysis pipeline. It dynamically scans
-                    the repository history and outputs a structured JSON file to minimize visual overhead in the
-                    browser.</p>
+                <h3 class="card-title">How the data is collected</h3>
+                <p class="card-text">Every month, we analyze the repository and use git blame to determine when each line was last modified.
+                    This gives us a snapshot of how much original code survives over time.</p>
             </div>
         </section>
 
         <section class="fossil-finder glass-panel">
-            <h2 class="section-title">The Hall of Fossils</h2>
+            <h2 class="section-title">Ancient Code Fragments</h2>
             <div class="fossil-grid">
                 <div class="fossil-card" id="fossil-genesis">
                     <div class="fossil-header">
-                        <span class="fossil-label">The Genesis Fragment</span>
+                        <span class="fossil-label">First Code Ever</span>
                         <span class="fossil-year" id="genesis-year">----</span>
                     </div>
                     <div class="fossil-meta">
                         <span id="genesis-file">--</span>
                         <span class="fossil-commit" id="genesis-commit"></span>
                     </div>
-                    <div class="fossil-code"><code id="genesis-content">Loading ancestral code...</code></div>
+                    <div class="fossil-code"><code id="genesis-content">Loading...</code></div>
                 </div>
                 <div class="fossil-card" id="fossil-survivor">
                     <div class="fossil-header">
-                        <span class="fossil-label">The Immortal Line</span>
+                        <span class="fossil-label">Oldest Code Still Here</span>
                         <span class="fossil-year" id="survivor-year">----</span>
                     </div>
                     <div class="fossil-meta">
                         <span id="survivor-file">--</span>
                         <span class="fossil-commit" id="survivor-commit"></span>
                     </div>
-                    <div class="fossil-code"><code id="survivor-content">Scanning for survivors...</code></div>
+                    <div class="fossil-code"><code id="survivor-content">Loading...</code></div>
                 </div>
             </div>
         </section>
