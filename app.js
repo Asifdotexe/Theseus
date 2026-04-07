@@ -18,11 +18,12 @@ class TheseusVisualizer {
         this.scaleToggle = document.getElementById('scale-toggle');
         this.loadingState = document.getElementById('chart-loading');
 
-        this.margin = { top: 10, right: 0, bottom: 30, left: 50 };
+        this.margin = { top: 10, right: 20, bottom: 50, left: 60 };
         this.years = [];
         this.points = [];
         this.vizMode = 'chronological'; // 'chronological' | 'identity'
         this.yScaleMode = 'linear'; // 'linear' | 'log'
+        this.fossils = {};
 
         this.init();
     }
@@ -100,7 +101,16 @@ class TheseusVisualizer {
 
             const response = await fetch(`data/${repoInfo.file}`);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            this.currentData = await response.json();
+            const rawData = await response.json();
+
+            // Handle both list and object schemas
+            if (Array.isArray(rawData)) {
+                this.currentData = rawData;
+                this.fossils = {};
+            } else {
+                this.currentData = rawData.snapshots || [];
+                this.fossils = rawData.fossils || {};
+            }
 
             this.currentRepo = repoName;
             this.updateActiveBtn(repoName);
@@ -108,6 +118,7 @@ class TheseusVisualizer {
             this.processData();
             this.renderChart();
             this.updateInsights();
+            this.renderFossils();
         } catch (err) {
             console.error(err);
             this.showError(`Failed to load data for ${repoName}`);
@@ -123,33 +134,25 @@ class TheseusVisualizer {
     }
 
     processData() {
-        // Collect all composing years
+        // Sort snapshots chronologically
+        this.currentData.sort((a, b) => new Date(a.snapshot_date).getTime() - new Date(b.snapshot_date).getTime());
+
         const yearSet = new Set();
         this.currentData.forEach(d => {
             Object.keys(d.composition).forEach(y => yearSet.add(y));
         });
         this.years = Array.from(yearSet).sort();
 
-        // Map data points
+        // Convert to D3 stack-ready format
         this.points = this.currentData.map(d => {
+            const totalLines = Object.values(d.composition).reduce((acc, val) => acc + val, 0);
             const point = {
-                date: d.snapshot_date,
-                total: d.total_lines,
-                composition: d.composition,
-                stack: {}
+                date: new Date(d.snapshot_date),
+                total: totalLines
             };
-
-            let cumulative = 0;
             this.years.forEach(year => {
-                const value = d.composition[year] || 0;
-                point.stack[year] = {
-                    start: cumulative,
-                    end: cumulative + value,
-                    value: value
-                };
-                cumulative += value;
+                point[year] = d.composition[year] || 0;
             });
-
             return point;
         });
     }
@@ -159,98 +162,116 @@ class TheseusVisualizer {
         const height = this.canvas.clientHeight;
         if (!width || !height) return;
 
-        this.canvas.innerHTML = '';
-
-        // Define Gradients
-        const defs = this.createSVGElement('defs');
-        if (this.vizMode === 'identity') {
-            const gradOriginal = this.createSVGElement('linearGradient', { id: `grad-original`, x1: '0%', y1: '0%', x2: '0%', y2: '100%' });
-            gradOriginal.appendChild(this.createSVGElement('stop', { offset: '0%', 'stop-color': `#3bc7c7`, 'stop-opacity': 0.8 }));
-            gradOriginal.appendChild(this.createSVGElement('stop', { offset: '100%', 'stop-color': `#3bc7c7`, 'stop-opacity': 0.1 }));
-            defs.appendChild(gradOriginal);
-
-            const gradRefactored = this.createSVGElement('linearGradient', { id: `grad-refactored`, x1: '0%', y1: '0%', x2: '0%', y2: '100%' });
-            gradRefactored.appendChild(this.createSVGElement('stop', { offset: '0%', 'stop-color': `#f0a33b`, 'stop-opacity': 0.8 }));
-            gradRefactored.appendChild(this.createSVGElement('stop', { offset: '100%', 'stop-color': `#f0a33b`, 'stop-opacity': 0.1 }));
-            defs.appendChild(gradRefactored);
-        } else {
-            this.years.forEach((year, i) => {
-                const hue = (180 + i * 40) % 360;
-                const grad = this.createSVGElement('linearGradient', { id: `grad-${year}`, x1: '0%', y1: '0%', x2: '0%', y2: '100%' });
-                grad.appendChild(this.createSVGElement('stop', { offset: '0%', 'stop-color': `hsl(${hue}, 70%, 55%)`, 'stop-opacity': 0.8 }));
-                grad.appendChild(this.createSVGElement('stop', { offset: '100%', 'stop-color': `hsl(${hue}, 70%, 55%)`, 'stop-opacity': 0.1 }));
-                defs.appendChild(grad);
-            });
-        }
-        this.canvas.appendChild(defs);
-
         const chartWidth = width - this.margin.left - this.margin.right;
         const chartHeight = height - this.margin.top - this.margin.bottom;
 
-        // Scales
-        const xDenominator = Math.max(1, this.points.length - 1);
-        const xScale = (i) => (i / xDenominator) * chartWidth;
-        const maxVal = Math.max(...this.points.map(p => p.total));
+        const svg = d3.select(this.canvas);
+        svg.selectAll("*").remove();
 
+        // Containers
+        const g = svg.append("g")
+            .attr("transform", `translate(${this.margin.left},${this.margin.top})`);
+
+        // Scales
+        const xScale = d3.scaleTime()
+            .domain(d3.extent(this.points, d => d.date))
+            .range([0, chartWidth]);
+
+        const maxTotal = d3.max(this.points, d => d.total);
         let yScale;
         if (this.yScaleMode === 'log') {
-            const minLog = 0; // log10(1)
-            const maxLog = Math.log10(maxVal + 1);
-            yScale = (v) => {
-                const logV = Math.log10(v + 1);
-                return chartHeight - ((logV - minLog) / (maxLog - minLog)) * chartHeight;
-            };
+            yScale = d3.scaleLog()
+                .domain([1, maxTotal * 1.1])
+                .range([chartHeight, 0])
+                .clamp(true);
         } else {
-            yScale = maxVal > 0 ? (v) => chartHeight - (v / maxVal) * chartHeight : (v) => chartHeight;
+            yScale = d3.scaleLinear()
+                .domain([0, maxTotal * 1.05])
+                .range([chartHeight, 0]);
         }
 
-        // Render Areas
-        const group = this.createSVGElement('g', { transform: `translate(${this.margin.left}, ${this.margin.top})` });
+        // Color Logic & Gradients
+        const defs = svg.append("defs");
 
-        this.years.forEach((year, idx) => {
-            const pathData = this.points.map((p, i) => `${xScale(i)},${yScale(p.stack[year].end)}`);
-            const bottomData = this.points.map((p, i) => `${xScale(i)},${yScale(p.stack[year].start)}`).reverse();
-
-            let fillUrl;
+        const getBaseColor = (seriesName, seriesIndex) => {
             if (this.vizMode === 'identity') {
-                fillUrl = `url(#grad-${idx === 0 ? 'original' : 'refactored'})`;
-            } else {
-                fillUrl = `url(#grad-${year})`;
+                return (seriesIndex === 0) ? '#3bc7c7' : '#f0a33b';
             }
+            const yearIdx = this.years.indexOf(seriesName);
+            return `hsl(${(180 + yearIdx * 40) % 360}, 70%, 55%)`;
+        };
 
-            const areaPath = this.createSVGElement('path', {
-                d: `M${pathData.join(' L')} L${bottomData.join(' L')} Z`,
-                fill: fillUrl,
-                class: 'chart-area',
-                'data-year': year
-            });
+        // Create gradients for each series
+        const seriesKeys = this.vizMode === 'identity' ? [this.years[0], 'refactored'] : this.years;
+        this.years.forEach((year, i) => {
+            const color = getBaseColor(year, i);
+            const grad = defs.append("linearGradient")
+                .attr("id", `grad-${year}`)
+                .attr("x1", "0%").attr("y1", "0%")
+                .attr("x2", "0%").attr("y2", "100%");
 
-            areaPath.style.opacity = '0';
-            areaPath.style.transition = 'opacity 1.5s ease-out';
-            group.appendChild(areaPath);
-            setTimeout(() => areaPath.style.opacity = '1', 50);
+            grad.append("stop").attr("offset", "0%").attr("stop-color", color).attr("stop-opacity", 0.6);
+            grad.append("stop").attr("offset", "100%").attr("stop-color", color).attr("stop-opacity", 0.05);
         });
 
-        // Legend
-        this.renderLegend();
+        // Specialized gradients for Identity mode if needed
+        if (this.vizMode === 'identity') {
+            ['original', 'refactored'].forEach(id => {
+                const color = id === 'original' ? '#3bc7c7' : '#f0a33b';
+                const grad = defs.append("linearGradient")
+                    .attr("id", `grad-id-${id}`)
+                    .attr("x1", "0%").attr("y1", "0%")
+                    .attr("x2", "0%").attr("y2", "100%");
+                grad.append("stop").attr("offset", "0%").attr("stop-color", color).attr("stop-opacity", 0.6);
+                grad.append("stop").attr("offset", "100%").attr("stop-color", color).attr("stop-opacity", 0.05);
+            });
+        }
 
-        // Axes
-        this.renderAxes(group, chartWidth, chartHeight, xScale, yScale, maxVal);
+        // Stack & Area
+        const stackGenerator = d3.stack()
+            .keys(this.years);
 
-        // Interaction
-        const overlay = this.createSVGElement('rect', { width: chartWidth, height: chartHeight, fill: 'transparent' });
-        overlay.onmousemove = (e) => {
-            const svgRect = this.canvas.getBoundingClientRect();
-            const mouseX = e.clientX - svgRect.left - this.margin.left;
-            const index = Math.round((mouseX / chartWidth) * (this.points.length - 1));
-            if (index >= 0 && index < this.points.length) {
-                this.showTooltip(this.points[index], e.clientX - svgRect.left, e.clientY - svgRect.top);
+        const stackedData = stackGenerator(this.points);
+
+        const areaGenerator = d3.area()
+            .x(d => xScale(d.data.date))
+            .y0(d => yScale(this.yScaleMode === 'log' ? Math.max(1, d[0]) : d[0]))
+            .y1(d => yScale(this.yScaleMode === 'log' ? Math.max(1, d[1]) : d[1]))
+            .curve(d3.curveMonotoneX);
+
+        // Render Layers (Data Join)
+        const layers = g.selectAll(".layer")
+            .data(stackedData, d => d.key);
+
+        const getFill = (d, i) => {
+            if (this.vizMode === 'identity') {
+                const id = i === 0 ? 'original' : 'refactored';
+                return `url(#grad-id-${id})`;
             }
+            return `url(#grad-${d.key})`;
         };
-        overlay.onmouseleave = () => this.hideTooltip();
-        group.appendChild(overlay);
 
-        this.canvas.appendChild(group);
+        layers.enter().append("path")
+            .attr("class", "chart-area layer")
+            .attr("data-year", d => d.key)
+            .attr("fill", getFill)
+            .attr("d", areaGenerator)
+            .style("opacity", 0)
+            .transition()
+            .duration(800)
+            .style("opacity", 1);
+
+        layers.transition()
+            .duration(800)
+            .attr("d", areaGenerator)
+            .attr("fill", getFill);
+
+        layers.exit().remove();
+
+        // Interaction Components (Legend, Axes, Scrubber)
+        this.renderLegend();
+        this.renderAxes(g, chartWidth, chartHeight, xScale, yScale);
+        this.setupInteractivity(g, chartWidth, chartHeight, xScale, yScale);
     }
 
     renderLegend() {
@@ -262,154 +283,236 @@ class TheseusVisualizer {
         items.forEach(item => {
             const div = document.createElement('div');
             div.className = 'legend-item';
+            div.style.cursor = 'pointer';
             div.innerHTML = `
                 <span class="color-dot" style="background: ${item.color}; box-shadow: 0 0 10px ${item.color}44"></span>
                 <span>${item.label}</span>
             `;
+
+            div.onmouseenter = () => {
+                const label = item.label;
+                const firstYear = this.years[0];
+
+                d3.selectAll(".chart-area").style("opacity", 0.1);
+
+                if (this.vizMode === 'identity') {
+                    if (label === 'Original Code') {
+                        d3.selectAll(`.chart-area[data-year='${firstYear}']`).style("opacity", 1);
+                    } else {
+                        // All years except the first one
+                        d3.selectAll(".chart-area")
+                            .filter(function () { return d3.select(this).attr("data-year") !== firstYear; })
+                            .style("opacity", 1);
+                    }
+                } else {
+                    d3.selectAll(`.chart-area[data-year='${label}']`).style("opacity", 1);
+                }
+            };
+
+            div.onmouseleave = () => {
+                d3.selectAll(".chart-area").style("opacity", 1);
+            };
+
             this.legend.appendChild(div);
         });
     }
 
-    renderAxes(group, width, height, xScale, yScale, maxVal) {
-        const formatValue = (v) => {
-            if (v >= 1000000) return `${(v / 1000000).toFixed(1)}M`;
-            if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
-            return Math.round(v);
-        };
+    renderAxes(g, width, height, xScale, yScale) {
+        // Y Axis - Custom Grid & Labels
+        const yAxis = d3.axisLeft(yScale)
+            .ticks(5)
+            .tickFormat(v => {
+                if (v >= 1000000) return `${(v / 1000000).toFixed(1)}M`;
+                if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
+                return Math.round(v);
+            })
+            .tickSize(-width);
 
-        let lastY = -100;
-        const minGap = 20;
+        const yGroup = g.append("g")
+            .attr("class", "axis-y")
+            .call(yAxis);
 
-        if (this.yScaleMode === 'log') {
-            let val = 1;
-            while (val <= maxVal * 10) {
-                const y = yScale(Math.min(val, maxVal));
-                if (y >= 0 && y <= height && Math.abs(y - lastY) > minGap) {
-                    group.appendChild(this.createSVGElement('line', { x1: 0, x2: width, y1: y, y2: y, stroke: '#374151', 'stroke-dasharray': '3,3', 'stroke-opacity': 0.5 }));
-                    const label = this.createSVGElement('text', { x: -10, y: y + 4, 'text-anchor': 'end', fill: '#6b7280', 'font-size': '10px' });
-                    label.textContent = formatValue(val);
-                    group.appendChild(label);
-                    lastY = y;
-                }
-                val *= 10;
-                if (val === 10 && maxVal < 1) break;
-            }
-        } else {
-            const tickCount = 5;
-            for (let i = 0; i <= tickCount; i++) {
-                const val = (i / tickCount) * maxVal;
-                const y = yScale(val);
-                if (Math.abs(y - lastY) > minGap) {
-                    group.appendChild(this.createSVGElement('line', { x1: 0, x2: width, y1: y, y2: y, stroke: '#374151', 'stroke-dasharray': '3,3', 'stroke-opacity': 0.5 }));
-                    const label = this.createSVGElement('text', { x: -10, y: y + 4, 'text-anchor': 'end', fill: '#6b7280', 'font-size': '10px' });
-                    label.textContent = formatValue(val);
-                    group.appendChild(label);
-                    lastY = y;
-                }
-            }
-        }
+        yGroup.selectAll(".tick line")
+            .attr("stroke", "#374151")
+            .attr("stroke-dasharray", "3,3")
+            .attr("stroke-opacity", 0.5);
 
-        const xStep = Math.max(1, Math.floor(this.points.length / 6));
-        this.points.forEach((p, i) => {
-            if (i % xStep === 0 || p.date.endsWith('-01')) {
-                const label = this.createSVGElement('text', { x: xScale(i), y: height + 25, 'text-anchor': 'middle', fill: '#6b7280', 'font-size': '10px' });
-                label.textContent = p.date.endsWith('-01') ? p.date.split('-')[0] : (i % xStep === 0 ? p.date : '');
-                if (label.textContent) group.appendChild(label);
-            }
-        });
+        yGroup.selectAll("text")
+            .attr("x", -10)
+            .attr("fill", "#6b7280")
+            .attr("font-size", "10px")
+            .attr("font-family", "inherit");
+
+        yGroup.select(".domain").remove();
+
+        // X Axis
+        const xAxis = d3.axisBottom(xScale)
+            .ticks(Math.min(this.points.length, 6))
+            .tickFormat(d3.timeFormat("%Y"));
+
+        const xGroup = g.append("g")
+            .attr("class", "axis-x")
+            .attr("transform", `translate(0,${height})`)
+            .call(xAxis);
+
+        xGroup.selectAll("text")
+            .attr("y", 15)
+            .attr("fill", "#8b949e")
+            .attr("font-size", "11px")
+            .attr("letter-spacing", "0.05em")
+            .attr("font-family", "inherit");
+
+        xGroup.select(".domain").attr("stroke", "rgba(255, 255, 255, 0.1)");
+        xGroup.selectAll(".tick line").attr("stroke", "rgba(255, 255, 255, 0.1)");
+
+        // Axis Labels
+        g.append("text")
+            .attr("class", "axis-label")
+            .attr("x", width / 2)
+            .attr("y", height + 40)
+            .attr("fill", "#6b7280")
+            .attr("font-size", "12px")
+            .attr("text-anchor", "middle")
+            .text("Time");
+
+        g.append("text")
+            .attr("class", "axis-label")
+            .attr("transform", "rotate(-90)")
+            .attr("x", -height / 2)
+            .attr("y", -45)
+            .attr("fill", "#6b7280")
+            .attr("font-size", "12px")
+            .attr("text-anchor", "middle")
+            .text("Lines of Code");
+    }
+
+    setupInteractivity(g, width, height, xScale, yScale) {
+        const scrubber = g.append("line")
+            .attr("class", "scrubber-line hidden")
+            .attr("y1", 0)
+            .attr("y2", height)
+            .attr("stroke", "rgba(255,255,255,0.2)")
+            .attr("stroke-width", 1);
+
+        const bisect = d3.bisector(d => d.date).left;
+
+        g.append("rect")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("fill", "transparent")
+            .on("mousemove", (event) => {
+                const mouseX = d3.pointer(event)[0];
+                const date = xScale.invert(mouseX);
+                const idx = bisect(this.points, date, 1);
+                const d0 = this.points[idx - 1];
+                const d1 = this.points[idx];
+                
+                // Handle single-point or edge cases
+                if (!d0 && !d1) return;
+                let d;
+                if (!d0) d = d1;
+                else if (!d1) d = d0;
+                else d = date - d0.date > d1.date - date ? d1 : d0;
+
+                const snappedX = xScale(d.date);
+                scrubber.attr("x1", snappedX).attr("x2", snappedX).classed("hidden", false);
+
+                const svgRect = this.canvas.getBoundingClientRect();
+                this.showTooltip(d, snappedX + this.margin.left, d3.pointer(event)[1] + this.margin.top);
+            })
+            .on("mouseleave", () => {
+                this.hideTooltip();
+                scrubber.classed("hidden", true);
+            });
     }
 
     showTooltip(point, x, y) {
         this.tooltip.classList.remove('hidden');
 
-        // Initial placement
+        const dateStr = point.date instanceof Date
+            ? point.date.toISOString().split('T')[0]
+            : point.date;
+
+        const oldestYear = this.years[0];
+        const originalVal = point[oldestYear] || 0;
+
+        // Find previous point to detect refactor
+        const idx = this.points.indexOf(point);
+        const prev = idx > 0 ? this.points[idx - 1] : null;
+        const prevOldVal = prev ? (prev[oldestYear] || 0) : null;
+        const isRefactor = prevOldVal && originalVal < prevOldVal * 0.85;
+
+        const evolutionVal = point.total - originalVal;
+
+        let refactorHTML = '';
+        if (originalVal === 0) {
+            refactorHTML = `
+                <div style="background: rgba(248, 113, 113, 0.15); border: 1px solid rgba(248, 113, 113, 0.4); 
+                            padding: 1rem; border-radius: 1rem; margin-bottom: 1.25rem; color: #f87171; 
+                            font-size: 0.85rem; line-height: 1.5;">
+                    <strong style="display: block; margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em;">Ship of Theseus: The Great Rebirth</strong>
+                    The original source code is now entirely gone.<br/><strong>Is this still the same codebase?</strong>
+                </div>
+            `;
+        } else if (isRefactor) {
+            refactorHTML = `
+                <div style="background: rgba(240, 163, 59, 0.15); border: 1px solid rgba(240, 163, 59, 0.4); 
+                            padding: 0.75rem; border-radius: 0.75rem; margin-bottom: 1rem; color: #f0a33b; 
+                            font-size: 0.85rem; line-height: 1.4;">
+                    <strong style="display: block; margin-bottom: 0.25rem;">Ship of Theseus: Major Refactor</strong>
+                    A significant part of the original source was refactored here.<br/>How much can you change before the identity shifts?
+                </div>
+            `;
+        }
+
+        this.tooltip.innerHTML = `
+            ${refactorHTML}
+            <div class="tooltip-header">Snapshot: ${dateStr}</div>
+            <div class="tooltip-item" style="margin-bottom: 0.5rem; opacity: 0.9">
+                <span class="label-group">Total Project Size</span>
+                <strong class="value-group">${point.total.toLocaleString()} lines</strong>
+            </div>
+            <div class="tooltip-divider"></div>
+            <div class="tooltip-item">
+                <div class="label-group">
+                    <span class="color-dot" style="background: #3bc7c7"></span>
+                    <span>Original (${oldestYear})</span>
+                </div>
+                <div class="value-group">
+                    <strong>${originalVal.toLocaleString()}</strong>
+                    <span class="percent-tag">${point.total > 0 ? ((originalVal / point.total) * 100).toFixed(1) : '0.0'}%</span>
+                </div>
+            </div>
+            <div class="tooltip-item">
+                <div class="label-group">
+                    <span class="color-dot" style="background: #f0a33b"></span>
+                    <span>Refactored</span>
+                </div>
+                <div class="value-group">
+                    <strong>${evolutionVal.toLocaleString()}</strong>
+                    <span class="percent-tag">${point.total > 0 ? ((evolutionVal / point.total) * 100).toFixed(1) : '0.0'}%</span>
+                </div>
+            </div>
+        `;
+
+        // Positioning AFTER content injection
+        const tooltipWidth = this.tooltip.offsetWidth || 340;
+        const tooltipHeight = this.tooltip.offsetHeight || 220;
+        const svgRect = this.canvas.getBoundingClientRect();
+
         let left = x + 15;
         let top = y + 15;
 
-        // Get bounds
-        const tooltipWidth = this.tooltip.offsetWidth;
-        const tooltipHeight = this.tooltip.offsetHeight;
-        const containerWidth = document.body.clientWidth;
-        const svgRect = this.canvas.getBoundingClientRect();
-
-        // Horizontal flip if too close to right edge
-        if (svgRect.left + left + tooltipWidth > containerWidth - 20) {
+        // Flip if clipping window edges
+        if (svgRect.left + left + tooltipWidth > window.innerWidth - 20) {
             left = x - tooltipWidth - 15;
         }
-
-        // Vertical flip if too close to bottom (relative to viewport)
         if (svgRect.top + top + tooltipHeight > window.innerHeight - 20) {
             top = y - tooltipHeight - 15;
         }
 
         this.tooltip.style.left = `${left}px`;
         this.tooltip.style.top = `${top}px`;
-
-        const getColor = (idx, year) => {
-            if (this.vizMode === 'identity') return idx === 0 ? '#3bc7c7' : '#f0a33b';
-            const yearIdx = this.years.indexOf(year);
-            return `hsl(${(180 + yearIdx * 40) % 360}, 70%, 55%)`;
-        };
-
-        let compositionHtml = '';
-        if (this.vizMode === 'identity') {
-            const oldestYear = this.years[0];
-            const originalVal = point.composition[oldestYear] || 0;
-            const refactoredVal = point.total - originalVal;
-
-            compositionHtml += `
-                <div class="tooltip-item">
-                    <div class="label-group">
-                        <span class="color-dot" style="background: #3bc7c7"></span>
-                        <span>Original (${oldestYear})</span>
-                    </div>
-                    <div class="value-group">
-                        <strong>${originalVal.toLocaleString()}</strong>
-                        <span class="percent-tag">${((originalVal / point.total) * 100).toFixed(1)}%</span>
-                    </div>
-                </div>
-                <div class="tooltip-item">
-                    <div class="label-group">
-                        <span class="color-dot" style="background: #f0a33b"></span>
-                        <span>Refactored</span>
-                    </div>
-                    <div class="value-group">
-                        <strong>${refactoredVal.toLocaleString()}</strong>
-                        <span class="percent-tag">${((refactoredVal / point.total) * 100).toFixed(1)}%</span>
-                    </div>
-                </div>
-                <div class="tooltip-divider"></div>
-            `;
-        }
-
-        this.years.slice().sort((a, b) => b - a).forEach(year => {
-            const val = point.composition[year] || 0;
-            if (val > 0) {
-                const yearColor = getColor(null, year);
-                compositionHtml += `
-                    <div class="tooltip-item">
-                        <div class="label-group">
-                            <span class="color-dot" style="background: ${yearColor}"></span>
-                            <span>${year}</span>
-                        </div>
-                        <div class="value-group">
-                            <strong>${val.toLocaleString()}</strong>
-                            <span class="percent-tag">${((val / point.total) * 100).toFixed(1)}%</span>
-                        </div>
-                    </div>
-                `;
-            }
-        });
-
-        this.tooltip.innerHTML = `
-            <div class="tooltip-header">Snapshot: ${point.date}</div>
-            <div class="tooltip-item" style="margin-bottom: 0.5rem; opacity: 0.8">
-                <span>Total Project Size</span>
-                <strong>${point.total.toLocaleString()} lines</strong>
-            </div>
-            <div class="tooltip-divider"></div>
-            ${compositionHtml}
-        `;
     }
 
     hideTooltip() {
@@ -417,20 +520,150 @@ class TheseusVisualizer {
     }
 
     updateInsights() {
-        if (!this.currentData || this.currentData.length === 0) return;
-        const first = this.currentData[0];
-        const last = this.currentData[this.currentData.length - 1];
+        if (!this.points || this.points.length === 0) return;
+        const first = this.points[0];
+        const last = this.points[this.points.length - 1];
 
-        let originalYear = this.years[0];
-        if (!originalYear || first.total_lines === 0) {
-            document.getElementById('percent-replaced').textContent = '--';
-        } else {
-            const originalLinesInFirst = first.composition[originalYear] || 0;
-            const originalLinesInLast = last.composition[originalYear] || 0;
-            const replaced = ((originalLinesInFirst - originalLinesInLast) / originalLinesInFirst) * 100;
-            document.getElementById('percent-replaced').textContent = `${Math.min(100, Math.max(0, replaced)).toFixed(1)}%`;
+        // 1. Birth Year (Genesis)
+        const birthYear = this.years[0];
+        document.getElementById('birth-year').textContent = birthYear;
+
+        // 2. Oldest Surviving Year
+        let oldestSurviving = '--';
+        for (const year of this.years) {
+            if (last[year] > 0) {
+                oldestSurviving = year;
+                break;
+            }
         }
-        document.getElementById('oldest-line').textContent = this.years[0];
+        document.getElementById('oldest-line').textContent = oldestSurviving;
+
+        if (birthYear && first.total > 0) {
+            const originalLinesInFirst = first[birthYear] || 0;
+            if (originalLinesInFirst > 0) {
+                const originalLinesInLast = last[birthYear] || 0;
+                const replaced = ((originalLinesInFirst - originalLinesInLast) / originalLinesInFirst) * 100;
+                document.getElementById('percent-replaced').textContent = `${Math.min(100, Math.max(0, replaced)).toFixed(1)}%`;
+            } else {
+                document.getElementById('percent-replaced').textContent = '0.0%';
+            }
+        } else {
+            document.getElementById('percent-replaced').textContent = '--';
+        }
+
+        // Death counter: count times when original code dropped to 0
+        let deathCount = 0;
+        let wasDead = false;
+        for (const point of this.points) {
+            const origLines = point[birthYear] || 0;
+            if (origLines === 0 && !wasDead) {
+                deathCount++;
+                wasDead = true;
+            } else if (origLines > 0) {
+                wasDead = false;
+            }
+        }
+        document.getElementById('death-count').textContent = deathCount;
+
+        // 4. Modernization Velocity (Δ Old Code / Δ Time)
+        const lastDate = new Date(last.date);
+        const currentYear = lastDate.getFullYear();
+        const oldThreshold = currentYear - 3;
+
+        // Find snapshot approx 6 months ago (180 days)
+        const targetMs = lastDate.getTime() - (180 * 24 * 60 * 60 * 1000);
+        let prevSnapshot = this.points[0];
+        for (let i = this.points.length - 1; i >= 0; i--) {
+            if (new Date(this.points[i].date).getTime() <= targetMs) {
+                prevSnapshot = this.points[i];
+                break;
+            }
+        }
+
+        const getOldLines = (snap) => {
+            return this.years
+                .filter(y => y <= oldThreshold)
+                .reduce((sum, y) => sum + (snap[y] || 0), 0);
+        };
+
+        const oldNow = getOldLines(last);
+        const oldThen = getOldLines(prevSnapshot);
+        const months = Math.max(1, (lastDate - new Date(prevSnapshot.date)) / (30 * 24 * 60 * 60 * 1000));
+        const velocity = (oldThen - oldNow) / months;
+
+        const velEl = document.getElementById('modernization-velocity');
+        if (this.points.length < 2 || oldThen === 0) {
+            velEl.textContent = 'Stable';
+        } else {
+            velEl.textContent = `${Math.max(0, Math.round(velocity)).toLocaleString()}`;
+        }
+
+        // 5. Mean Code Age (Weighted average)
+        const totalLines = last.total;
+        if (totalLines > 0) {
+            let totalAge = 0;
+            this.years.forEach(y => {
+                const lines = last[y] || 0;
+                const age = currentYear - parseInt(y);
+                totalAge += lines * age;
+            });
+            const meanAge = totalAge / totalLines;
+            document.getElementById('mean-code-age').textContent = `${meanAge.toFixed(1)} yrs`;
+        } else {
+            document.getElementById('mean-code-age').textContent = '0.0 yrs';
+        }
+
+        // 6. Peak Preservation (Largest legacy year)
+        let peakYear = '--';
+        let peakVal = 0;
+        this.years.forEach(y => {
+            if (parseInt(y) < currentYear) {
+                const val = last[y] || 0;
+                if (val > peakVal) {
+                    peakVal = val;
+                    peakYear = y;
+                }
+            }
+        });
+        document.getElementById('peak-year').textContent = peakYear;
+
+        // 7. Greatest Transformation (Largest single drop in origin)
+        let maxDrop = 0;
+        let dropDate = '--';
+        if (birthYear && this.points.length > 1) {
+            for (let i = 1; i < this.points.length; i++) {
+                const prev = this.points[i - 1][birthYear] || 0;
+                const curr = this.points[i][birthYear] || 0;
+                const drop = prev - curr;
+                if (drop > maxDrop) {
+                    maxDrop = drop;
+                    const d = new Date(this.points[i].date);
+                    dropDate = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                }
+            }
+        }
+        document.getElementById('transformation-date').textContent = dropDate;
+    }
+
+    renderFossils() {
+        const genesis = this.fossils.genesis || {};
+        const survivor = this.fossils.survivor || {};
+
+        // Genesis (The Origin)
+        document.getElementById('genesis-year').textContent = genesis.year || '----';
+        document.getElementById('genesis-file').textContent = genesis.file 
+            ? `${genesis.file}:${genesis.line}` 
+            : '--';
+        document.getElementById('genesis-content').textContent = genesis.content || 'No fossil data';
+        document.getElementById('genesis-commit').textContent = genesis.commit || '';
+
+        // Survivor (The Current)
+        document.getElementById('survivor-year').textContent = survivor.year || '----';
+        document.getElementById('survivor-file').textContent = survivor.file 
+            ? `${survivor.file}:${survivor.line}` 
+            : '--';
+        document.getElementById('survivor-content').textContent = survivor.content || 'No fossil data';
+        document.getElementById('survivor-commit').textContent = survivor.commit || '';
     }
 
     createSVGElement(tag, attrs = {}) {
