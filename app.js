@@ -655,8 +655,13 @@ class TheseusVisualizer {
         const buildLink = (fossil) => {
             if (!fossil.file) return '--';
             const display = `${fossil.file}:${fossil.line}`;
-            if (!repoPath || !fossil.commit) return display;
-            const url = `https://github.com/${repoPath}/blob/${fossil.commit}/${fossil.file}#L${fossil.line}`;
+            if (!repoPath) return display;
+            // view_commit = the commit we checked out when we found this fossil.
+            // The file is guaranteed to exist at view_commit (we ls-files'd it).
+            // Using the blame commit (fossil.commit) causes 404s when files have been renamed.
+            const linkCommit = fossil.view_commit || fossil.commit;
+            if (!linkCommit) return display;
+            const url = `https://github.com/${repoPath}/blob/${linkCommit}/${fossil.file}#L${fossil.line}`;
             return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline; text-decoration-color: rgba(255,255,255,0.2); transition: color 0.3s ease;" onmouseover="this.style.color='var(--accent-cyan)'" onmouseout="this.style.color='inherit'">${display}</a>`;
         };
 

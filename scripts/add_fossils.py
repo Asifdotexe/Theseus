@@ -46,10 +46,10 @@ def _run_command(cmd, cwd=None):
 
 
 def _blank_fossil():
-    return {"timestamp": 2_147_483_647, "file": "", "content": "", "year": "", "commit": "", "line": 0}
+    return {"timestamp": 2_147_483_647, "file": "", "content": "", "year": "", "commit": "", "view_commit": "", "line": 0}
 
 
-def _blame_file(repo_path, file_path):
+def _blame_file(repo_path, file_path, view_commit=""):
     """Run git blame --line-porcelain on a single file and return the oldest fossil found."""
     try:
         blame_output = _run_command(
@@ -74,6 +74,7 @@ def _blame_file(repo_path, file_path):
                 fossil["content"] = content
                 fossil["year"] = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y")
                 fossil["commit"] = current_commit_data.get("commit", "")[:7]
+                fossil["view_commit"] = view_commit  # the checkout commit — file is guaranteed to exist here
                 fossil["line"] = line_num
         else:
             parts = line.split(" ")
@@ -88,13 +89,13 @@ def _blame_file(repo_path, file_path):
     return fossil
 
 
-def _blame_files_parallel(repo_path, files, max_workers=20):
+def _blame_files_parallel(repo_path, files, view_commit="", max_workers=20):
     """Blame a list of files in parallel and return the single oldest fossil found."""
     global_oldest = _blank_fossil()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(_blame_file, repo_path, f): f
+            executor.submit(_blame_file, repo_path, f, view_commit): f
             for f in files
         }
         for future in concurrent.futures.as_completed(futures):
@@ -184,7 +185,7 @@ def get_genesis_fossil(repo_path, genesis_depth=50):
         if not files:
             continue
 
-        fossil = _blame_files_parallel(repo_path, files)
+        fossil = _blame_files_parallel(repo_path, files, view_commit=commit)
 
         if fossil["file"] and fossil["timestamp"] < global_oldest["timestamp"]:
             global_oldest = fossil
@@ -219,12 +220,16 @@ def get_survivor_fossil(repo_path):
         # Detached HEAD fallback
         _run_command(["git", "checkout", "--force", f"origin/{default_branch}"], cwd=repo_path)
 
+    # Resolve the exact HEAD commit hash — this is what we use in GitHub URLs
+    # because the file is guaranteed to exist at HEAD (we just ls-files'd it).
+    head_commit = _run_command(["git", "rev-parse", "HEAD"], cwd=repo_path)
+
     files = _get_tracked_files(repo_path)
     if not files:
         logger.warning("No tracked files found at HEAD.")
         return _blank_fossil()
 
-    return _blame_files_parallel(repo_path, files)
+    return _blame_files_parallel(repo_path, files, view_commit=head_commit)
 
 
 # ---------------------------------------------------------------------------
