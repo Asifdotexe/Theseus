@@ -2,26 +2,31 @@
   {
     "name": "langchain",
     "file": "langchain_data.json",
-    "description": "Framework for developing LLM-driven applications and agents."
+    "description": "Framework for developing LLM-driven applications and agents.",
+    "repo": "langchain-ai/langchain"
   },
   {
     "name": "react",
     "file": "react_data.json",
-    "description": "Component-based JavaScript library for building user interfaces."
+    "description": "Component-based JavaScript library for building user interfaces.",
+    "repo": "facebook/react"
   },
   {
     "name": "numpy",
     "file": "numpy_data.json",
-    "description": "The fundamental package for scientific computing in Python."
+    "description": "The fundamental package for scientific computing in Python.",
+    "repo": "numpy/numpy"
   },
   {
     "name": "zed",
     "file": "zed_data.json",
-    "description": "High-performance, GPU-accelerated code editor for teamwork."
+    "description": "High-performance, GPU-accelerated code editor for teamwork.",
+    "repo": "zed-industries/zed"
   },
   {
     "name": "claude-code",
     "file": "claude-code_data.json",
-    "description": "Claude's agentic CLI tool for local coding tasks."
+    "description": "Claude's agentic CLI tool for local coding tasks.",
+    "repo": "anthropics/claude-code"
   }
 ]
