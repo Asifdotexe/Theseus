@@ -670,9 +670,10 @@ svg#main-chart {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 1.5rem;
-    padding: 2rem;
+    padding: 1.25rem 1.5rem;
     position: relative;
     overflow: hidden;
+    text-align: left;
 }
 
 .fossil-card::before {
@@ -739,19 +740,24 @@ svg#main-chart {
     background: rgba(0, 0, 0, 0.4);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 0.75rem;
-    padding: 1.25rem;
+    padding: 0.6rem 1rem;
     font-family: var(--font-mono);
     font-size: 0.85rem;
     color: var(--text-primary);
-    opacity: 0.5;
-    line-height: 1.5;
-    word-break: break-all;
-    white-space: pre-wrap;
-    position: relative;
+    opacity: 0.8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-align: left;
 }
 
 .fossil-code::before {
-    content: '> ';
+    content: '>';
     color: var(--accent-cyan);
     opacity: 0.5;
+    flex-shrink: 0;
+    display: inline;
 }

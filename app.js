@@ -665,17 +665,17 @@ class TheseusVisualizer {
             return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline; text-decoration-color: rgba(255,255,255,0.2); transition: color 0.3s ease;" onmouseover="this.style.color='var(--accent-cyan)'" onmouseout="this.style.color='inherit'">${display}</a>`;
         };
 
-        // Genesis (The Origin)
+        // Genesis (Historical Fossil) — show the pinned blame commit hash (frozen in history)
         document.getElementById('genesis-year').textContent = genesis.year || '----';
         document.getElementById('genesis-file').innerHTML = buildLink(genesis);
         document.getElementById('genesis-content').textContent = genesis.content ? genesis.content.trim() : 'No fossil data';
         document.getElementById('genesis-commit').textContent = genesis.commit || '';
 
-        // Survivor (The Current)
+        // Survivor (Living Fossil) — show branch name (e.g. "main"), not old blame hash
         document.getElementById('survivor-year').textContent = survivor.year || '----';
         document.getElementById('survivor-file').innerHTML = buildLink(survivor);
         document.getElementById('survivor-content').textContent = survivor.content ? survivor.content.trim() : 'No fossil data';
-        document.getElementById('survivor-commit').textContent = survivor.commit || '';
+        document.getElementById('survivor-commit').textContent = survivor.view_commit || survivor.commit || '';
     }
 
     createSVGElement(tag, attrs = {}) {
