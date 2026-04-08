@@ -150,31 +150,40 @@ def get_genesis_fossil(repo_path, genesis_depth=50):
     """
     Historical Fossil: the oldest line **ever authored** in this repo.
 
-    Strategy: git history ordered oldest-first; blame the very first commit.
-    The root commit is where the repo began — every line in it was authored
-    at (or before) that moment. We look at genesis_depth commits max as a
-    safety net but in practice the first commit is definitive.
+    Strategy: Sort ALL commits by author-time (not committer-time), take the
+    oldest genesis_depth ones, and blame them. This correctly handles repos
+    migrated from SVN/Mercurial where old authored lines may appear in commits
+    with much later committer timestamps.
     """
     logger.info("Computing Genesis (Historical) fossil...")
 
-    # Get the oldest commits first (--reverse = oldest to newest)
+    # Get every commit with its author-time so we can sort by actual authorship date
     log_output = _run_command(
-        ["git", "log", "--all", "--reverse", "--pretty=format:%H", f"-n{genesis_depth}"],
+        ["git", "log", "--all", "--pretty=format:%H %at"],
         cwd=repo_path,
     )
-    commits = [c for c in log_output.splitlines() if c.strip()]
 
-    if not commits:
+    commit_pairs = []
+    for line in log_output.splitlines():
+        parts = line.strip().split(" ", 1)
+        if len(parts) == 2:
+            try:
+                commit_pairs.append((parts[0], int(parts[1])))
+            except ValueError:
+                pass
+
+    if not commit_pairs:
         logger.warning("No commits found in repo.")
         return _blank_fossil()
 
+    # Sort by author-time ascending → oldest authored commits first
+    commit_pairs.sort(key=lambda x: x[1])
+    oldest_commits = [(c[0], c[1]) for c in commit_pairs[:genesis_depth]]
+
     global_oldest = _blank_fossil()
 
-    # Optimisation: try just the very first commit first (the root).
-    # The root commit authored everything that was there from day one.
-    # Only fall through to deeper scanning if we somehow find nothing.
-    for i, commit in enumerate(commits):
-        logger.info(f"  Genesis scan: commit {i+1}/{len(commits)} ({commit[:7]})")
+    for i, (commit, author_ts) in enumerate(oldest_commits):
+        logger.info(f"  Genesis scan: commit {i+1}/{len(oldest_commits)} ({commit[:7]}, at={author_ts})")
         try:
             _run_command(["git", "checkout", "--force", commit], cwd=repo_path)
         except RuntimeError as e:
@@ -189,12 +198,6 @@ def get_genesis_fossil(repo_path, genesis_depth=50):
 
         if fossil["file"] and fossil["timestamp"] < global_oldest["timestamp"]:
             global_oldest = fossil
-
-        # Early exit: if we found something in the first commit,
-        # that IS the oldest possible authored moment — stop here.
-        if i == 0 and global_oldest["file"]:
-            logger.info(f"  Genesis found in root commit — stopping early.")
-            break
 
     return global_oldest
 
