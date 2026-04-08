@@ -29,14 +29,14 @@ def _run_command(cmd, cwd=None):
         raise RuntimeError(f"Command failed: {e.stderr}") from e
 
 
-def get_snapshot_commit(repo_path, date_str):
+def get_snapshot_commit(repo_path, date_str, branch="HEAD"):
     """Find the commit closest to the given date (YYYY-MM)."""
     try:
         year, month = map(int, date_str.split("-"))
         _, last_day = monthrange(year, month)
         search_date = f"{year}-{month:02d}-{last_day}"
         commit = _run_command(
-            ["git", "rev-list", "-n", "1", f"--before={search_date}", "HEAD"],
+            ["git", "rev-list", "-n", "1", f"--before={search_date}", branch],
             cwd=repo_path,
         )
         if commit:
@@ -147,17 +147,24 @@ def backfill_fossils(data_dir, repo_urls):
         if not local_repo.exists():
             logger.info(f"Cloning {repo_url}...")
             _run_command(["git", "clone", repo_url, str(local_repo)])
+        
+        try:
+            default_branch = _run_command(["git", "branch", "--show-current"], cwd=str(local_repo))
+            if not default_branch:
+                default_branch = "HEAD"
+        except Exception:
+            default_branch = "HEAD"
 
         # 3. Resolve and Get Fossils
         try:
             if not fossils.get("genesis"):
                 first_date = snapshots[0]["snapshot_date"]
-                first_commit = get_snapshot_commit(local_repo, first_date)
+                first_commit = get_snapshot_commit(local_repo, first_date, default_branch)
                 fossils["genesis"] = get_fossil_metadata(local_repo, first_commit)
 
             if not fossils.get("survivor"):
                 last_date = snapshots[-1]["snapshot_date"]
-                last_commit = get_snapshot_commit(local_repo, last_date)
+                last_commit = get_snapshot_commit(local_repo, last_date, default_branch)
                 fossils["survivor"] = get_fossil_metadata(local_repo, last_commit)
 
             # 4. Write back
