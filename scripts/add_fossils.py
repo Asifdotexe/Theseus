@@ -220,16 +220,17 @@ def get_survivor_fossil(repo_path):
         # Detached HEAD fallback
         _run_command(["git", "checkout", "--force", f"origin/{default_branch}"], cwd=repo_path)
 
-    # Resolve the exact HEAD commit hash — this is what we use in GitHub URLs
-    # because the file is guaranteed to exist at HEAD (we just ls-files'd it).
-    head_commit = _run_command(["git", "rev-parse", "HEAD"], cwd=repo_path)
+    # For the Living Fossil, link to the branch name directly (not a frozen commit hash).
+    # This means the GitHub URL points to the current, living file — which is what "living" means.
+    # The file is guaranteed to exist on this branch since we ls-files it below.
+    view_commit = default_branch
 
     files = _get_tracked_files(repo_path)
     if not files:
         logger.warning("No tracked files found at HEAD.")
         return _blank_fossil()
 
-    return _blame_files_parallel(repo_path, files, view_commit=head_commit)
+    return _blame_files_parallel(repo_path, files, view_commit=view_commit)
 
 
 # ---------------------------------------------------------------------------
