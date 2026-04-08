@@ -328,6 +328,8 @@ def backfill_fossils(data_dir, repo_urls):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    import argparse
+
     REPO_URLS = {
         "react":       "https://github.com/facebook/react.git",
         "numpy":       "https://github.com/numpy/numpy.git",
@@ -335,4 +337,21 @@ if __name__ == "__main__":
         "zed":         "https://github.com/zed-industries/zed.git",
         "claude-code": "https://github.com/anthropics/claude-code.git",
     }
-    backfill_fossils("./data", REPO_URLS)
+
+    parser = argparse.ArgumentParser(description="Backfill fossil data for Theseus repos.")
+    parser.add_argument(
+        "--only",
+        metavar="REPO",
+        help=f"Process only this repo. Choices: {', '.join(REPO_URLS)}",
+    )
+    args = parser.parse_args()
+
+    if args.only:
+        if args.only not in REPO_URLS:
+            parser.error(f"Unknown repo '{args.only}'. Valid options: {', '.join(REPO_URLS)}")
+        selected = {args.only: REPO_URLS[args.only]}
+        logger.info(f"Running for single repo: {args.only}")
+    else:
+        selected = REPO_URLS
+
+    backfill_fossils("./data", selected)

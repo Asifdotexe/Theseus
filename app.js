@@ -685,7 +685,20 @@ class TheseusVisualizer {
     }
 
     showLoading(show) {
-        this.loadingState.classList.toggle('hidden', !show);
+        if (show) {
+            this.loadingState.classList.remove('hidden');
+            // Also hide the chart container while skeleton shows
+            const chartContainer = document.getElementById('chart-container');
+            if (chartContainer) chartContainer.style.opacity = '0';
+        } else {
+            this.loadingState.classList.add('hidden');
+            // Fade the chart back in smoothly
+            const chartContainer = document.getElementById('chart-container');
+            if (chartContainer) {
+                chartContainer.style.transition = 'opacity 0.35s ease';
+                chartContainer.style.opacity = '1';
+            }
+        }
     }
 
     showError(msg) {

@@ -64,9 +64,40 @@
         </header>
 
         <section class="visualization-canvas">
-            <div id="chart-loading" class="loading-state">
-                [ Scanning repository history... ]
+            <!-- Skeleton Loader -->
+            <div id="chart-loading" class="skeleton-loading-overlay hidden" aria-hidden="true">
+                <div class="skeleton-legend">
+                    <div class="skeleton-pill"></div>
+                    <div class="skeleton-pill"></div>
+                    <div class="skeleton-pill"></div>
+                    <div class="skeleton-pill"></div>
+                </div>
+                <div class="skeleton-chart">
+                    <div class="skeleton-chart-inner">
+                        <div class="skeleton-y-axis">
+                            <div class="skeleton-tick"></div>
+                            <div class="skeleton-tick"></div>
+                            <div class="skeleton-tick"></div>
+                            <div class="skeleton-tick"></div>
+                            <div class="skeleton-tick"></div>
+                        </div>
+                        <div class="skeleton-area">
+                            <div class="skeleton-wave wave-1"></div>
+                            <div class="skeleton-wave wave-2"></div>
+                            <div class="skeleton-wave wave-3"></div>
+                        </div>
+                    </div>
+                    <div class="skeleton-x-axis">
+                        <div class="skeleton-tick short"></div>
+                        <div class="skeleton-tick short"></div>
+                        <div class="skeleton-tick short"></div>
+                        <div class="skeleton-tick short"></div>
+                        <div class="skeleton-tick short"></div>
+                        <div class="skeleton-tick short"></div>
+                    </div>
+                </div>
             </div>
+
             <div id="chart-error" class="error-banner hidden"></div>
 
             <div id="chart-container" class="chart-wrapper">
@@ -192,7 +223,7 @@
             <div class="fossil-grid">
                 <div class="fossil-card" id="fossil-genesis">
                     <div class="fossil-header">
-                        <span class="fossil-label">🦕 Historical Fossil</span>
+                        <span class="fossil-label">Historical Fossil</span>
                         <span class="fossil-year" id="genesis-year">----</span>
                     </div>
                     <div class="fossil-meta">
@@ -202,11 +233,12 @@
                     <div class="fossil-code">
                         <code id="genesis-content">Loading...</code>
                     </div>
-                    <p style="margin: 0.5rem 0 0; font-size: 0.7rem; color: var(--text-muted); font-style: italic;">The oldest line ever written in this repo's history — even if deleted long ago.</p>
+                    <p class="card-text" style="font-size: 0.7rem; font-style: italic;">The
+                        oldest line ever written in this repo's history, even if deleted long ago.</p>
                 </div>
                 <div class="fossil-card" id="fossil-survivor">
                     <div class="fossil-header">
-                        <span class="fossil-label">🌿 Living Fossil</span>
+                        <span class="fossil-label">Living Fossil</span>
                         <span class="fossil-year" id="survivor-year">----</span>
                     </div>
                     <div class="fossil-meta">
@@ -216,7 +248,8 @@
                     <div class="fossil-code">
                         <code id="survivor-content">Loading...</code>
                     </div>
-                    <p style="margin: 0.5rem 0 0; font-size: 0.7rem; color: var(--text-muted); font-style: italic;">The oldest line that is still alive in the codebase today.</p>
+                    <p class="card-text" style="font-size: 0.7rem; font-style: italic;">The
+                        oldest line that is still alive in the codebase today.</p>
                 </div>
             </div>
         </section>
@@ -260,7 +293,8 @@
                 <p class="cta-text">
                     If you find this digital paradox as fascinating as I do,
                     consider dropping a ⭐ on
-                    <a href="https://github.com/Asifdotexe/Theseus" target="_blank" rel="noopener noreferrer" class="philosophy-link">GitHub</a>.
+                    <a href="https://github.com/Asifdotexe/Theseus" target="_blank" rel="noopener noreferrer"
+                        class="philosophy-link">GitHub</a>.
                     It helps keep the ship afloat!
                 </p>
 
