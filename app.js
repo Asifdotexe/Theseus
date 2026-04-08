@@ -649,20 +649,27 @@ class TheseusVisualizer {
         const genesis = this.fossils.genesis || {};
         const survivor = this.fossils.survivor || {};
 
+        const repoInfo = this.manifest.find(r => r.name === this.currentRepo);
+        const repoPath = repoInfo ? repoInfo.repo : null;
+
+        const buildLink = (fossil) => {
+            if (!fossil.file) return '--';
+            const display = `${fossil.file}:${fossil.line}`;
+            if (!repoPath || !fossil.commit) return display;
+            const url = `https://github.com/${repoPath}/blob/${fossil.commit}/${fossil.file}#L${fossil.line}`;
+            return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline; text-decoration-color: rgba(255,255,255,0.2); transition: color 0.3s ease;" onmouseover="this.style.color='var(--accent-cyan)'" onmouseout="this.style.color='inherit'">${display}</a>`;
+        };
+
         // Genesis (The Origin)
         document.getElementById('genesis-year').textContent = genesis.year || '----';
-        document.getElementById('genesis-file').textContent = genesis.file 
-            ? `${genesis.file}:${genesis.line}` 
-            : '--';
-        document.getElementById('genesis-content').textContent = genesis.content || 'No fossil data';
+        document.getElementById('genesis-file').innerHTML = buildLink(genesis);
+        document.getElementById('genesis-content').textContent = genesis.content ? genesis.content.trim() : 'No fossil data';
         document.getElementById('genesis-commit').textContent = genesis.commit || '';
 
         // Survivor (The Current)
         document.getElementById('survivor-year').textContent = survivor.year || '----';
-        document.getElementById('survivor-file').textContent = survivor.file 
-            ? `${survivor.file}:${survivor.line}` 
-            : '--';
-        document.getElementById('survivor-content').textContent = survivor.content || 'No fossil data';
+        document.getElementById('survivor-file').innerHTML = buildLink(survivor);
+        document.getElementById('survivor-content').textContent = survivor.content ? survivor.content.trim() : 'No fossil data';
         document.getElementById('survivor-commit').textContent = survivor.commit || '';
     }
 
