@@ -110,14 +110,18 @@ class TestLoadExistingState:
             f.flush()
 
             result = load_existing_state(f.name)
-            assert len(result) == 2
-            assert result[0]["snapshot_date"] == "2024-01"
+            # load_existing_state always returns {"snapshots": [...], "fossils": {}}
+            assert "snapshots" in result
+            assert "fossils" in result
+            snapshots = result["snapshots"]
+            assert len(snapshots) == 2
+            assert snapshots[0]["snapshot_date"] == "2024-01"
 
         os.unlink(f.name)
 
     def test_file_not_exists(self):
         result = load_existing_state("/nonexistent/path/data.json")
-        assert result == []
+        assert result == {"snapshots": [], "fossils": {}}
 
     def test_corrupted_json_returns_empty(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -125,6 +129,6 @@ class TestLoadExistingState:
             f.flush()
 
             result = load_existing_state(f.name)
-            assert result == []
+            assert result == {"snapshots": [], "fossils": {}}
 
         os.unlink(f.name)
