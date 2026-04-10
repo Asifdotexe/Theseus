@@ -2,7 +2,7 @@
 
 The Ship of Theseus engine is composed of a disconnected backend (data generator) and frontend (UI visualizer). They communicate entirely via an intermediary static JSON format. 
 
-This architecture allows the system to remain highly secure, completely severless, and free to host using static GitHub Pages. (woohoo, who doesn't like free things?)
+This architecture allows the system to remain highly secure, completely serverless, and free to host using static GitHub Pages. (woohoo, who doesn't like free things?)
 
 ---
 
@@ -62,10 +62,10 @@ stateDiagram-v2
     extractor --> AppendMetadataJSON
 ```
 
-#### Historical (Genesis) Protocol
+### Historical (Genesis) Protocol
 Repos imported from SVN/Mercurial can have wildly inaccurate committer timestamps. We resolve this by running `git log --all --pretty=format:%H %at` to sort all commits explicitly by `author-time`, stepping through the absolute oldest `genesis_depth` commits, and extracting the first line of code ever pushed to the repo's history regardless of branch logic.
 
-#### Living (Survivor) Protocol
+### Living (Survivor) Protocol
 This focuses strictly on the default branch `HEAD`. It recursively blames the latest state of the codebase. Because it's checking `HEAD`, this value frequently moves as old code is finally refactored out.
 
 ---
