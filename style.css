@@ -53,7 +53,8 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1.5rem; /* Reduced gap to accommodate badge */
+    gap: 1.5rem;
+    /* Reduced gap to accommodate badge */
 }
 
 .author-badge {
@@ -217,16 +218,145 @@ body {
     display: flex;
     flex-direction: column;
     padding-bottom: 3rem;
+    position: relative;
 }
 
-.loading-state {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 1.2rem;
-    animation: pulse 2s infinite;
+/* ─── Skeleton Loader ─────────────────────────────────────────────────────── */
+@keyframes shimmer {
+    0%   { background-position: -1000px 0; }
+    100% { background-position:  1000px 0; }
 }
+
+.skeleton-loading-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    padding: 1.5rem 1rem 1rem;
+    background: transparent;
+    pointer-events: auto;
+}
+
+.skeleton-loading-overlay > * {
+    pointer-events: none;
+}
+
+/* Shimmer base — applied to every skeleton element */
+.skeleton-pill,
+.skeleton-tick,
+.skeleton-wave {
+    background: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.04) 0%,
+        rgba(255, 255, 255, 0.10) 40%,
+        rgba(59, 199, 199, 0.08) 55%,
+        rgba(255, 255, 255, 0.04) 100%
+    );
+    background-size: 1000px 100%;
+    animation: shimmer 1.8s infinite linear;
+    border-radius: 9999px;
+}
+
+/* Legend row */
+.skeleton-legend {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.skeleton-pill {
+    height: 14px;
+    border-radius: 9999px;
+}
+.skeleton-pill:nth-child(1) { width: 60px; animation-delay: 0s; }
+.skeleton-pill:nth-child(2) { width: 80px; animation-delay: 0.15s; }
+.skeleton-pill:nth-child(3) { width: 70px; animation-delay: 0.3s; }
+.skeleton-pill:nth-child(4) { width: 65px; animation-delay: 0.45s; }
+
+/* Chart body */
+.skeleton-chart {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.skeleton-chart-inner {
+    flex: 1;
+    display: flex;
+    gap: 0.75rem;
+    min-height: 400px;
+}
+
+/* Y-axis ticks */
+.skeleton-y-axis {
+    width: 40px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: 0.25rem 0;
+}
+
+.skeleton-tick {
+    height: 10px;
+    border-radius: 4px;
+}
+.skeleton-y-axis .skeleton-tick { width: 32px; }
+.skeleton-y-axis .skeleton-tick:nth-child(1) { animation-delay: 0.0s; }
+.skeleton-y-axis .skeleton-tick:nth-child(2) { animation-delay: 0.1s; }
+.skeleton-y-axis .skeleton-tick:nth-child(3) { animation-delay: 0.2s; }
+.skeleton-y-axis .skeleton-tick:nth-child(4) { animation-delay: 0.3s; }
+.skeleton-y-axis .skeleton-tick:nth-child(5) { animation-delay: 0.4s; }
+
+/* Stacked area mock */
+.skeleton-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 0;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    position: relative;
+}
+
+.skeleton-wave {
+    border-radius: 0;
+    animation-timing-function: ease-in-out;
+}
+.skeleton-wave.wave-1 { flex: 2; animation-delay: 0.05s; opacity: 0.5; }
+.skeleton-wave.wave-2 { flex: 3; animation-delay: 0.2s;  opacity: 0.7; }
+.skeleton-wave.wave-3 { flex: 4; animation-delay: 0.35s; opacity: 1;   }
+
+/* X-axis ticks */
+.skeleton-x-axis {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 44px 0 48px;
+}
+.skeleton-x-axis .skeleton-tick.short {
+    width: 30px;
+    height: 10px;
+}
+.skeleton-x-axis .skeleton-tick:nth-child(1) { animation-delay: 0.0s; }
+.skeleton-x-axis .skeleton-tick:nth-child(2) { animation-delay: 0.1s; }
+.skeleton-x-axis .skeleton-tick:nth-child(3) { animation-delay: 0.2s; }
+.skeleton-x-axis .skeleton-tick:nth-child(4) { animation-delay: 0.3s; }
+.skeleton-x-axis .skeleton-tick:nth-child(5) { animation-delay: 0.4s; }
+.skeleton-x-axis .skeleton-tick:nth-child(6) { animation-delay: 0.5s; }
+
+/* Keep pulse for any legacy use */
+@keyframes pulse {
+    0%   { opacity: 0.3; }
+    50%  { opacity: 0.8; }
+    100% { opacity: 0.3; }
+}
+
 
 .error-banner {
     background: rgba(153, 27, 27, 0.2);
@@ -240,20 +370,6 @@ body {
 
 .hidden {
     display: none !important;
-}
-
-@keyframes pulse {
-    0% {
-        opacity: 0.3;
-    }
-
-    50% {
-        opacity: 0.8;
-    }
-
-    100% {
-        opacity: 0.3;
-    }
 }
 
 /* Chart Canvas */
@@ -669,9 +785,10 @@ svg#main-chart {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 1.5rem;
-    padding: 2rem;
+    padding: 1.25rem 1.5rem;
     position: relative;
     overflow: hidden;
+    text-align: left;
 }
 
 .fossil-card::before {
@@ -682,7 +799,7 @@ svg#main-chart {
     right: 0;
     bottom: 0;
     background: radial-gradient(ellipse at top left, rgba(59, 199, 199, 0.08), transparent 50%),
-                radial-gradient(ellipse at bottom right, rgba(240, 163, 59, 0.08), transparent 50%);
+        radial-gradient(ellipse at bottom right, rgba(240, 163, 59, 0.08), transparent 50%);
     pointer-events: none;
     opacity: 0.6;
 }
@@ -738,19 +855,24 @@ svg#main-chart {
     background: rgba(0, 0, 0, 0.4);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 0.75rem;
-    padding: 1.25rem;
+    padding: 0.6rem 1rem;
     font-family: var(--font-mono);
     font-size: 0.85rem;
     color: var(--text-primary);
-    opacity: 0.5;
-    line-height: 1.5;
-    word-break: break-all;
-    white-space: pre-wrap;
-    position: relative;
+    opacity: 0.8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-align: left;
 }
 
 .fossil-code::before {
-    content: '> ';
+    content: '>';
     color: var(--accent-cyan);
     opacity: 0.5;
+    flex-shrink: 0;
+    display: inline;
 }

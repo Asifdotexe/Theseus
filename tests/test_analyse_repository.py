@@ -1,22 +1,23 @@
+"""
+Tests for the analyse repository module.
+"""
+
 import json
 import os
 import sys
 import tempfile
 from datetime import datetime, timezone
 
-import pytest
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scripts.analyse_repository import (
-    _parse_blame_output,
-    load_existing_state,
-)
+# pylint: disable=wrong-import-position,import-error
+from scripts.analyse_repository import _parse_blame_output, load_existing_state
 
 
 class TestParseBlameOutput:
     """Tests for the git blame output parser."""
 
     def test_single_file_single_author_year(self):
+        """Test parsing a blame output with a single commit and author."""
         blame_output = (
             "abc123def4567890123456789012345678901234 1 1 1\n"
             "author Test Author\n"
@@ -29,6 +30,7 @@ class TestParseBlameOutput:
         assert result == {year: 1}
 
     def test_multiple_commits_different_years(self):
+        """Test parsing a blame output with multiple commits stretching across different years."""
         blame_output = (
             "abc123def4567890123456789012345678901234 1 1 1\n"
             "author Test Author\n"
@@ -48,6 +50,7 @@ class TestParseBlameOutput:
         assert result[year_2024] == 1
 
     def test_lines_attributed_to_correct_year(self):
+        """Test parsing a blame output where multiple lines are credited to the same commit and year."""
         blame_output = (
             "abc123def4567890123456789012345678901234 1 1 1\n"
             "author Test Author\n"
@@ -62,10 +65,12 @@ class TestParseBlameOutput:
         assert result[year] == 3
 
     def test_empty_output(self):
+        """Test parsing an empty blame output."""
         result = _parse_blame_output("")
         assert result == {}
 
     def test_invalid_timestamp_ignored(self):
+        """Test parsing a blame output that contains an invalid timestamp, ensuring it is handled properly."""
         blame_output = (
             "abc123def4567890123456789012345678901234 1 1 1\n"
             "author Test Author\n"
@@ -77,6 +82,7 @@ class TestParseBlameOutput:
         assert result == {}
 
     def test_40_and_64_char_hashes(self):
+        """Test parsing a blame output safely using varied hash sizes."""
         blame_output = (
             "abc123def4567890123456789012345678901234 1 1 1\n"
             "author Test Author\n"
@@ -93,6 +99,7 @@ class TestLoadExistingState:
     """Tests for loading existing JSON state."""
 
     def test_load_valid_json(self):
+        """Test loading a correctly formatted existing JSON state."""
         data = [
             {
                 "snapshot_date": "2024-01",
@@ -110,21 +117,27 @@ class TestLoadExistingState:
             f.flush()
 
             result = load_existing_state(f.name)
-            assert len(result) == 2
-            assert result[0]["snapshot_date"] == "2024-01"
+            # load_existing_state always returns {"snapshots": [...], "fossils": {}}
+            assert "snapshots" in result
+            assert "fossils" in result
+            snapshots = result["snapshots"]
+            assert len(snapshots) == 2
+            assert snapshots[0]["snapshot_date"] == "2024-01"
 
         os.unlink(f.name)
 
     def test_file_not_exists(self):
+        """Test loading state when the requested file does not exist, expecting a blank default structure."""
         result = load_existing_state("/nonexistent/path/data.json")
-        assert result == []
+        assert result == {"snapshots": [], "fossils": {}}
 
     def test_corrupted_json_returns_empty(self):
+        """Test loading a corrupted JSON file, which should fallback dynamically to a default parsed object."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write("not valid json {")
             f.flush()
 
             result = load_existing_state(f.name)
-            assert result == []
+            assert result == {"snapshots": [], "fossils": {}}
 
         os.unlink(f.name)
