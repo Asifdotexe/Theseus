@@ -146,8 +146,8 @@ def _get_default_branch(repo_path):
     ]:
         try:
             result = _run_command(strategy, cwd=repo_path)
-            # Strip the "origin/" prefix if present
-            branch = result.split("/")[-1]
+            # Strip the "origin/" prefix if present without collapsing slashes
+            branch = result[len("origin/") :] if result.startswith("origin/") else result
             if branch:
                 return branch
         except RuntimeError:
