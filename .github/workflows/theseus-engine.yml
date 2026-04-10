@@ -40,6 +40,9 @@ jobs:
           # Genesis (historical fossil) is left completely untouched.
           poetry run python scripts/add_fossils.py --update-survivor
 
+      - name: Clean & Minify data payloads
+        run: poetry run python scripts/cleanup_data.py
+
       - name: Commit and push data updates
         run: |
           git config --local user.email "action@github.com"
