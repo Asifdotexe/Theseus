@@ -406,7 +406,7 @@ class TheseusVisualizer {
                 const idx = bisect(this.points, date, 1);
                 const d0 = this.points[idx - 1];
                 const d1 = this.points[idx];
-                
+
                 // Handle single-point or edge cases
                 if (!d0 && !d1) return;
                 let d;
@@ -653,29 +653,47 @@ class TheseusVisualizer {
         const repoPath = repoInfo ? repoInfo.repo : null;
 
         const buildLink = (fossil) => {
-            if (!fossil.file) return '--';
-            const display = `${fossil.file}:${fossil.line}`;
-            if (!repoPath) return display;
-            // view_commit = the commit we checked out when we found this fossil.
-            // The file is guaranteed to exist at view_commit (we ls-files'd it).
-            // Using the blame commit (fossil.commit) causes 404s when files have been renamed.
+            const display = fossil.file ? `${fossil.file}:${fossil.line}` : '--';
+
+            // No file or no repo → plain text node, nothing to link
+            if (!fossil.file || !repoPath) return document.createTextNode(display);
+
             const linkCommit = fossil.view_commit || fossil.commit;
-            if (!linkCommit) return display;
-            const url = `https://github.com/${repoPath}/blob/${linkCommit}/${fossil.file}#L${fossil.line}`;
-            return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline; text-decoration-color: rgba(255,255,255,0.2); transition: color 0.3s ease;" onmouseover="this.style.color='var(--accent-cyan)'" onmouseout="this.style.color='inherit'">${display}</a>`;
+            if (!linkCommit) return document.createTextNode(display);
+
+            // URL-encode the file path (preserve /, encode special chars per segment)
+            // and the commit ref (branch names can contain slashes so encode fully)
+            const safeFile = fossil.file.split('/').map(encodeURIComponent).join('/');
+            const safeCommit = encodeURIComponent(linkCommit);
+            const safeLine = parseInt(fossil.line, 10) || 0;
+            const url = `https://github.com/${repoPath}/blob/${safeCommit}/${safeFile}#L${safeLine}`;
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            a.textContent = display;
+            a.style.color = 'inherit';
+            a.style.textDecoration = 'underline';
+            a.style.textDecorationColor = 'rgba(255,255,255,0.2)';
+            a.style.transition = 'color 0.3s ease';
+            a.addEventListener('mouseover', () => { a.style.color = 'var(--accent-cyan)'; });
+            a.addEventListener('mouseout', () => { a.style.color = 'inherit'; });
+            return a;
         };
 
         // Genesis (Historical Fossil) — show the pinned blame commit hash (frozen in history)
         document.getElementById('genesis-year').textContent = genesis.year || '----';
-        document.getElementById('genesis-file').innerHTML = buildLink(genesis);
+        document.getElementById('genesis-file').replaceChildren(buildLink(genesis));
         document.getElementById('genesis-content').textContent = genesis.content ? genesis.content.trim() : 'No fossil data';
         document.getElementById('genesis-commit').textContent = genesis.commit || '';
 
         // Survivor (Living Fossil) — show branch name (e.g. "main"), not old blame hash
         document.getElementById('survivor-year').textContent = survivor.year || '----';
-        document.getElementById('survivor-file').innerHTML = buildLink(survivor);
+        document.getElementById('survivor-file').replaceChildren(buildLink(survivor));
         document.getElementById('survivor-content').textContent = survivor.content ? survivor.content.trim() : 'No fossil data';
         document.getElementById('survivor-commit').textContent = survivor.view_commit || survivor.commit || '';
+
     }
 
     createSVGElement(tag, attrs = {}) {

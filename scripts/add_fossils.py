@@ -327,8 +327,10 @@ def backfill_fossils(data_dir, repo_urls):
             )
 
             # 4. Write back — snapshots are preserved as-is
-            with open(json_file, "w", encoding="utf-8") as f:
+            tmp_file = json_file.with_suffix(f"{json_file.suffix}.tmp")
+            with open(tmp_file, "w", encoding="utf-8") as f:
                 json.dump({"snapshots": snapshots, "fossils": fossils}, f, separators=(",", ":"))
+            os.replace(tmp_file, json_file)
 
             logger.info(f"  ✓ Successfully wrote fossils for {repo_name}")
 
@@ -392,7 +394,7 @@ def update_survivor_fossils(data_dir, repo_urls):
             logger.info(f"  Cloning {repo_url}...")
             _run_command(["git", "clone", repo_url, str(local_repo)])
         else:
-            logger.info(f"  Fetching latest...")
+            logger.info("  Fetching latest...")
             try:
                 _run_command(["git", "fetch", "--all"], cwd=local_repo)
             except RuntimeError as e:
@@ -404,8 +406,11 @@ def update_survivor_fossils(data_dir, repo_urls):
 
             old_identity = _fossil_identity(existing_survivor)
             new_identity = _fossil_identity(new_survivor)
+            metadata_changed = (
+                existing_survivor.get("view_commit") != new_survivor.get("view_commit")
+            )
 
-            if old_identity == new_identity:
+            if old_identity == new_identity and not metadata_changed:
                 logger.info(
                     f"  ✓ Survivor unchanged: {new_survivor.get('file')}:{new_survivor.get('line')} "
                     f"(commit {new_survivor.get('commit')}) — skipping write."
@@ -419,8 +424,10 @@ def update_survivor_fossils(data_dir, repo_urls):
 
             # 4. Write back — genesis is preserved, only survivor is replaced
             updated_fossils = {**existing_fossils, "survivor": new_survivor}
-            with open(json_file, "w", encoding="utf-8") as f:
+            tmp_file = json_file.with_suffix(f"{json_file.suffix}.tmp")
+            with open(tmp_file, "w", encoding="utf-8") as f:
                 json.dump({"snapshots": snapshots, "fossils": updated_fossils}, f, separators=(",", ":"))
+            os.replace(tmp_file, json_file)
 
             logger.info(f"  ✓ Wrote updated survivor for {repo_name}")
             updated_count += 1

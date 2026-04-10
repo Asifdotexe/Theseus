@@ -236,6 +236,10 @@ body {
     gap: 1.25rem;
     padding: 1.5rem 1rem 1rem;
     background: transparent;
+    pointer-events: auto;
+}
+
+.skeleton-loading-overlay > * {
     pointer-events: none;
 }
 
