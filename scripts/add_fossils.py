@@ -258,7 +258,10 @@ def get_survivor_fossil(repo_path):
     logger.info("  Checking out default branch: %s", default_branch)
 
     try:
-        _run_command(["git", "checkout", "--force", default_branch], cwd=repo_path)
+        _run_command(
+            ["git", "checkout", "-B", default_branch, f"origin/{default_branch}"],
+            cwd=repo_path,
+        )
     except RuntimeError:
         # Detached HEAD fallback
         _run_command(
