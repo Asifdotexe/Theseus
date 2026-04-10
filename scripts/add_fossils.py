@@ -294,6 +294,7 @@ def backfill_fossils(data_dir, repo_urls):
     data_path = Path(data_dir)
     temp_dir = Path("./temp_fossil_repos")
     temp_dir.mkdir(exist_ok=True)
+    had_failures = False
 
     for json_file in sorted(data_path.glob("*.json")):
         if json_file.name == "manifest.json":
@@ -382,6 +383,9 @@ def backfill_fossils(data_dir, repo_urls):
 
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("  ✗ Error computing fossils for %s: %s", repo_name, e)
+            had_failures = True
+
+    return had_failures
 
 
 # ---------------------------------------------------------------------------
@@ -405,6 +409,7 @@ def update_survivor_fossils(data_dir, repo_urls):
     temp_dir.mkdir(exist_ok=True)
 
     updated_count = 0
+    had_failures = False
 
     for json_file in sorted(data_path.glob("*.json")):
         if json_file.name == "manifest.json":
@@ -498,9 +503,10 @@ def update_survivor_fossils(data_dir, repo_urls):
 
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("  ✗ Error updating survivor for %s: %s", repo_name, e)
+            had_failures = True
 
     logger.info("\nSurvivor update complete. %d repo(s) updated.", updated_count)
-    return updated_count
+    return had_failures
 
 
 # ---------------------------------------------------------------------------
@@ -565,10 +571,14 @@ def main():
 
     if args.update_survivor:
         logger.info("Mode: incremental survivor update")
-        update_survivor_fossils(data_dir, selected)
+        had_failures = update_survivor_fossils(data_dir, selected)
     else:
         logger.info("Mode: full backfill (genesis + survivor)")
-        backfill_fossils(data_dir, selected)
+        had_failures = backfill_fossils(data_dir, selected)
+
+    if had_failures:
+        logger.error("One or more repositories failed to update. Exiting non-zero.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
