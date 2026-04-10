@@ -33,6 +33,13 @@ jobs:
       - name: Run theseus multi-repo analysis (delta load)
         run: poetry run python scripts/analyse_repository.py
 
+      - name: Update living fossils (survivor check)
+        run: |
+          # Re-blame HEAD for every repo and update the survivor fossil only if
+          # the file:line:commit has actually changed since the last run.
+          # Genesis (historical fossil) is left completely untouched.
+          poetry run python scripts/add_fossils.py --update-survivor
+
       - name: Commit and push data updates
         run: |
           git config --local user.email "action@github.com"

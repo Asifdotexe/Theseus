@@ -1,7 +1,7 @@
 """
-Fossil Finder — Backfill Script
-================================
-Adds two fossil types to each repo's data JSON without touching snapshot data:
+Fossil Finder — Backfill & Incremental Update Script
+=====================================================
+Manages two fossil types for each repo's data JSON without touching snapshot data:
 
   Genesis  (Historical Fossil) — the oldest line **ever written** in this repo's
             entire git history, found by blaming the very first commit(s).
@@ -9,8 +9,13 @@ Adds two fossil types to each repo's data JSON without touching snapshot data:
   Survivor (Living Fossil)     — the oldest line that is **still alive today**,
             found by blaming all files at the current default-branch HEAD.
 
-This script is intentionally decoupled from analyse_repository.py so that
-fossil data can be refreshed without reprocessing all snapshots.
+Modes
+-----
+  (no flags)          Full backfill: recompute both Genesis and Survivor for all repos.
+  --update-survivor   Incremental: only refresh the Survivor fossil for each repo,
+                      and only write to disk if the file:line has actually changed.
+                      This is the mode used by the GitHub Actions workflow.
+  --only REPO         Limit processing to a single named repo.
 """
 
 import json
@@ -142,6 +147,14 @@ def _get_default_branch(repo_path):
     return "HEAD"
 
 
+def _fossil_identity(fossil: dict) -> tuple:
+    """Return a hashable key that identifies which line this fossil refers to.
+    We use file + line-number + blame commit (the actual authoring commit).
+    This detects when the living fossil moves to a different line or file.
+    """
+    return (fossil.get("file", ""), fossil.get("line", 0), fossil.get("commit", ""))
+
+
 # ---------------------------------------------------------------------------
 # Genesis — Historical Fossil
 # ---------------------------------------------------------------------------
@@ -237,12 +250,12 @@ def get_survivor_fossil(repo_path):
 
 
 # ---------------------------------------------------------------------------
-# Backfill driver
+# Full backfill driver
 # ---------------------------------------------------------------------------
 
 def backfill_fossils(data_dir, repo_urls):
     """
-    For every repo JSON in data_dir, recompute fossils without touching snapshots.
+    For every repo JSON in data_dir, recompute both fossils without touching snapshots.
     Always forces a fresh recompute of both genesis and survivor.
     """
     data_path = Path(data_dir)
@@ -324,6 +337,102 @@ def backfill_fossils(data_dir, repo_urls):
 
 
 # ---------------------------------------------------------------------------
+# Incremental survivor-only update (used by GitHub Actions)
+# ---------------------------------------------------------------------------
+
+def update_survivor_fossils(data_dir, repo_urls):
+    """
+    Refresh only the Survivor (Living) fossil for each repo.
+    Skips writing to disk if the fossil's file:line:commit hasn't changed.
+
+    This is designed to be fast and run on every monthly cron tick so that
+    the living fossil stays current even when no new snapshots are being added.
+
+    Returns the number of repos where the survivor was updated.
+    """
+    data_path = Path(data_dir)
+    temp_dir = Path("./temp_fossil_repos")
+    temp_dir.mkdir(exist_ok=True)
+
+    updated_count = 0
+
+    for json_file in sorted(data_path.glob("*.json")):
+        if json_file.name == "manifest.json":
+            continue
+
+        repo_name = json_file.stem.replace("_data", "")
+        repo_url = repo_urls.get(repo_name)
+
+        if not repo_url:
+            logger.warning(f"No URL found for '{repo_name}', skipping.")
+            continue
+
+        logger.info(f"━━━ Checking survivor for: {repo_name} ━━━")
+
+        # 1. Load existing data
+        with open(json_file, "r", encoding="utf-8") as f:
+            raw_data = json.load(f)
+
+        if isinstance(raw_data, list):
+            snapshots = raw_data
+            existing_fossils = {}
+        else:
+            snapshots = raw_data.get("snapshots", [])
+            existing_fossils = raw_data.get("fossils", {})
+
+        if not snapshots:
+            logger.warning(f"  No snapshots found in {json_file.name}, skipping.")
+            continue
+
+        existing_survivor = existing_fossils.get("survivor", {})
+
+        # 2. Clone or fetch the repo
+        local_repo = temp_dir / repo_name
+        if not local_repo.exists():
+            logger.info(f"  Cloning {repo_url}...")
+            _run_command(["git", "clone", repo_url, str(local_repo)])
+        else:
+            logger.info(f"  Fetching latest...")
+            try:
+                _run_command(["git", "fetch", "--all"], cwd=local_repo)
+            except RuntimeError as e:
+                logger.warning(f"  Fetch failed (continuing with local): {e}")
+
+        # 3. Compute new survivor
+        try:
+            new_survivor = get_survivor_fossil(local_repo)
+
+            old_identity = _fossil_identity(existing_survivor)
+            new_identity = _fossil_identity(new_survivor)
+
+            if old_identity == new_identity:
+                logger.info(
+                    f"  ✓ Survivor unchanged: {new_survivor.get('file')}:{new_survivor.get('line')} "
+                    f"(commit {new_survivor.get('commit')}) — skipping write."
+                )
+                continue
+
+            # Something changed — log the diff clearly
+            logger.info(f"  ↻ Survivor updated for {repo_name}:")
+            logger.info(f"    OLD: {existing_survivor.get('file')}:{existing_survivor.get('line')} @ {existing_survivor.get('commit')}")
+            logger.info(f"    NEW: {new_survivor.get('file')}:{new_survivor.get('line')} @ {new_survivor.get('commit')}")
+
+            # 4. Write back — genesis is preserved, only survivor is replaced
+            updated_fossils = {**existing_fossils, "survivor": new_survivor}
+            with open(json_file, "w", encoding="utf-8") as f:
+                json.dump({"snapshots": snapshots, "fossils": updated_fossils}, f, separators=(",", ":"))
+
+            logger.info(f"  ✓ Wrote updated survivor for {repo_name}")
+            updated_count += 1
+
+        except Exception as e:
+            logger.error(f"  ✗ Error updating survivor for {repo_name}: {e}")
+
+    logger.info(f"\nSurvivor update complete. {updated_count} repo(s) updated.")
+    return updated_count
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -338,11 +447,20 @@ if __name__ == "__main__":
         "claude-code": "https://github.com/anthropics/claude-code.git",
     }
 
-    parser = argparse.ArgumentParser(description="Backfill fossil data for Theseus repos.")
+    parser = argparse.ArgumentParser(description="Manage fossil data for Theseus repos.")
     parser.add_argument(
         "--only",
         metavar="REPO",
         help=f"Process only this repo. Choices: {', '.join(REPO_URLS)}",
+    )
+    parser.add_argument(
+        "--update-survivor",
+        action="store_true",
+        help=(
+            "Incremental mode: only refresh the Survivor (Living) fossil. "
+            "Skips writing if file:line:commit hasn't changed. "
+            "Genesis is left untouched. Used by GitHub Actions."
+        ),
     )
     args = parser.parse_args()
 
@@ -354,4 +472,9 @@ if __name__ == "__main__":
     else:
         selected = REPO_URLS
 
-    backfill_fossils("./data", selected)
+    if args.update_survivor:
+        logger.info("Mode: incremental survivor update")
+        update_survivor_fossils("./data", selected)
+    else:
+        logger.info("Mode: full backfill (genesis + survivor)")
+        backfill_fossils("./data", selected)
