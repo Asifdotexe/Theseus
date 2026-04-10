@@ -15,6 +15,10 @@ def cleanup_data(data_dir: str) -> bool:
     Returns True if an error occurred, False otherwise.
     """
     data_path = Path(data_dir)
+    if not data_path.exists() or not data_path.is_dir():
+        print(f"Data directory not found or not a directory: {data_dir}")
+        return True
+
     json_files = list(data_path.glob("*.json"))
     had_failures = False
 
