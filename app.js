@@ -30,12 +30,13 @@ class TheseusVisualizer {
 
     async init() {
         try {
-            const response = await fetch('data/manifest.json');
+            const response = await fetch('theseus.config.json');
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
             let data = await response.json();
-            this.manifest = Array.isArray(data) ? data : [data];
+            // Fallback for backward compatibility, but normally expected to be under 'repositories'
+            this.manifest = data.repositories || (Array.isArray(data) ? data : [data]);
 
             this.renderSelectors();
             this.setupModeToggle();
@@ -447,8 +448,8 @@ class TheseusVisualizer {
         let refactorHTML = '';
         if (originalVal === 0) {
             refactorHTML = `
-                <div style="background: rgba(248, 113, 113, 0.15); border: 1px solid rgba(248, 113, 113, 0.4); 
-                            padding: 1rem; border-radius: 1rem; margin-bottom: 1.25rem; color: #f87171; 
+                <div style="background: rgba(248, 113, 113, 0.15); border: 1px solid rgba(248, 113, 113, 0.4);
+                            padding: 1rem; border-radius: 1rem; margin-bottom: 1.25rem; color: #f87171;
                             font-size: 0.85rem; line-height: 1.5;">
                     <strong style="display: block; margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em;">Ship of Theseus: The Great Rebirth</strong>
                     The original source code is now entirely gone.<br/><strong>Is this still the same codebase?</strong>
@@ -456,8 +457,8 @@ class TheseusVisualizer {
             `;
         } else if (isRefactor) {
             refactorHTML = `
-                <div style="background: rgba(240, 163, 59, 0.15); border: 1px solid rgba(240, 163, 59, 0.4); 
-                            padding: 0.75rem; border-radius: 0.75rem; margin-bottom: 1rem; color: #f0a33b; 
+                <div style="background: rgba(240, 163, 59, 0.15); border: 1px solid rgba(240, 163, 59, 0.4);
+                            padding: 0.75rem; border-radius: 0.75rem; margin-bottom: 1rem; color: #f0a33b;
                             font-size: 0.85rem; line-height: 1.4;">
                     <strong style="display: block; margin-bottom: 0.25rem;">Ship of Theseus: Major Refactor</strong>
                     A significant part of the original source was refactored here.<br/>How much can you change before the identity shifts?

@@ -18,13 +18,15 @@ Modes
   --only REPO         Limit processing to a single named repo.
 """
 
-import json
-import os
-import logging
-import subprocess
+import argparse
 import concurrent.futures
-from pathlib import Path
+import json
+import logging
+import os
+import subprocess
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -33,6 +35,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _run_command(cmd, cwd=None):
     try:
@@ -47,11 +50,21 @@ def _run_command(cmd, cwd=None):
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Command failed: {' '.join(str(c) for c in cmd)} — {e.stderr}") from e
+        raise RuntimeError(
+            f"Command failed: {' '.join(str(c) for c in cmd)} — {e.stderr}"
+        ) from e
 
 
 def _blank_fossil():
-    return {"timestamp": 2_147_483_647, "file": "", "content": "", "year": "", "commit": "", "view_commit": "", "line": 0}
+    return {
+        "timestamp": 2_147_483_647,
+        "file": "",
+        "content": "",
+        "year": "",
+        "commit": "",
+        "view_commit": "",
+        "line": 0,
+    }
 
 
 def _blame_file(repo_path, file_path, view_commit=""):
@@ -77,9 +90,13 @@ def _blame_file(repo_path, file_path, view_commit=""):
                 fossil["timestamp"] = timestamp
                 fossil["file"] = file_path
                 fossil["content"] = content
-                fossil["year"] = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y")
+                fossil["year"] = datetime.fromtimestamp(
+                    timestamp, timezone.utc
+                ).strftime("%Y")
                 fossil["commit"] = current_commit_data.get("commit", "")[:7]
-                fossil["view_commit"] = view_commit  # the checkout commit — file is guaranteed to exist here
+                fossil["view_commit"] = (
+                    view_commit  # the checkout commit — file is guaranteed to exist here
+                )
                 fossil["line"] = line_num
         else:
             parts = line.split(" ")
@@ -100,8 +117,7 @@ def _blame_files_parallel(repo_path, files, view_commit="", max_workers=20):
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(_blame_file, repo_path, f, view_commit): f
-            for f in files
+            executor.submit(_blame_file, repo_path, f, view_commit): f for f in files
         }
         for future in concurrent.futures.as_completed(futures):
             result = future.result()
@@ -115,7 +131,8 @@ def _get_tracked_files(repo_path):
     """Return a list of files that are tracked by git and exist on disk."""
     files_output = _run_command(["git", "ls-files"], cwd=repo_path)
     return [
-        f for f in files_output.splitlines()
+        f
+        for f in files_output.splitlines()
         if os.path.isfile(os.path.join(str(repo_path), f))
     ]
 
@@ -139,7 +156,9 @@ def _get_default_branch(repo_path):
     # Fall back to checking which of the usual suspects exists
     for branch in ("main", "master", "develop"):
         try:
-            _run_command(["git", "rev-parse", "--verify", f"origin/{branch}"], cwd=repo_path)
+            _run_command(
+                ["git", "rev-parse", "--verify", f"origin/{branch}"], cwd=repo_path
+            )
             return branch
         except RuntimeError:
             continue
@@ -158,6 +177,7 @@ def _fossil_identity(fossil: dict) -> tuple:
 # ---------------------------------------------------------------------------
 # Genesis — Historical Fossil
 # ---------------------------------------------------------------------------
+
 
 def get_genesis_fossil(repo_path, genesis_depth=50):
     """
@@ -196,11 +216,17 @@ def get_genesis_fossil(repo_path, genesis_depth=50):
     global_oldest = _blank_fossil()
 
     for i, (commit, author_ts) in enumerate(oldest_commits):
-        logger.info(f"  Genesis scan: commit {i+1}/{len(oldest_commits)} ({commit[:7]}, at={author_ts})")
+        logger.info(
+            "  Genesis scan: commit %d/%d (%s, at=%s)",
+            i + 1,
+            len(oldest_commits),
+            commit[:7],
+            author_ts,
+        )
         try:
             _run_command(["git", "checkout", "--force", commit], cwd=repo_path)
         except RuntimeError as e:
-            logger.warning(f"  Could not checkout {commit[:7]}: {e}")
+            logger.warning("  Could not checkout %s: %s", commit[:7], e)
             continue
 
         files = _get_tracked_files(repo_path)
@@ -219,6 +245,7 @@ def get_genesis_fossil(repo_path, genesis_depth=50):
 # Survivor — Living Fossil
 # ---------------------------------------------------------------------------
 
+
 def get_survivor_fossil(repo_path):
     """
     Living Fossil: the oldest line that is **still alive** in the codebase today.
@@ -228,13 +255,15 @@ def get_survivor_fossil(repo_path):
     logger.info("Computing Survivor (Living) fossil...")
 
     default_branch = _get_default_branch(repo_path)
-    logger.info(f"  Checking out default branch: {default_branch}")
+    logger.info("  Checking out default branch: %s", default_branch)
 
     try:
         _run_command(["git", "checkout", "--force", default_branch], cwd=repo_path)
     except RuntimeError:
         # Detached HEAD fallback
-        _run_command(["git", "checkout", "--force", f"origin/{default_branch}"], cwd=repo_path)
+        _run_command(
+            ["git", "checkout", "--force", f"origin/{default_branch}"], cwd=repo_path
+        )
 
     # For the Living Fossil, link to the branch name directly (not a frozen commit hash).
     # This means the GitHub URL points to the current, living file — which is what "living" means.
@@ -253,6 +282,7 @@ def get_survivor_fossil(repo_path):
 # Full backfill driver
 # ---------------------------------------------------------------------------
 
+
 def backfill_fossils(data_dir, repo_urls):
     """
     For every repo JSON in data_dir, recompute both fossils without touching snapshots.
@@ -270,10 +300,10 @@ def backfill_fossils(data_dir, repo_urls):
         repo_url = repo_urls.get(repo_name)
 
         if not repo_url:
-            logger.warning(f"No URL found for '{repo_name}', skipping.")
+            logger.warning("No URL found for '%s', skipping.", repo_name)
             continue
 
-        logger.info(f"━━━ Processing: {repo_name} ━━━")
+        logger.info("━━━ Processing: %s ━━━", repo_name)
 
         # 1. Load existing data (snapshots untouched)
         with open(json_file, "r", encoding="utf-8") as f:
@@ -285,20 +315,20 @@ def backfill_fossils(data_dir, repo_urls):
             snapshots = raw_data.get("snapshots", [])
 
         if not snapshots:
-            logger.warning(f"  No snapshots found in {json_file.name}, skipping.")
+            logger.warning("  No snapshots found in %s, skipping.", json_file.name)
             continue
 
         # 2. Clone the repo if we don't have it locally already
         local_repo = temp_dir / repo_name
         if not local_repo.exists():
-            logger.info(f"  Cloning {repo_url}...")
+            logger.info("  Cloning %s...", repo_url)
             _run_command(["git", "clone", repo_url, str(local_repo)])
         else:
-            logger.info(f"  Repo already cloned — fetching latest...")
+            logger.info("  Repo already cloned — fetching latest...")
             try:
                 _run_command(["git", "fetch", "--all"], cwd=local_repo)
             except RuntimeError as e:
-                logger.warning(f"  Fetch failed (continuing with local): {e}")
+                logger.warning("  Fetch failed (continuing with local): %s", e)
 
         # 3. Compute fossils
         try:
@@ -309,40 +339,55 @@ def backfill_fossils(data_dir, repo_urls):
 
             # Validate — warn if something looks wrong
             if not genesis.get("file"):
-                logger.warning(f"  ⚠ Genesis fossil is empty for {repo_name}")
+                logger.warning("  ⚠ Genesis fossil is empty for %s", repo_name)
             if not survivor.get("file"):
-                logger.warning(f"  ⚠ Survivor fossil is empty for {repo_name}")
+                logger.warning("  ⚠ Survivor fossil is empty for %s", repo_name)
             if genesis.get("commit") == survivor.get("commit") and genesis.get("file"):
                 logger.warning(
-                    f"  ⚠ Genesis and Survivor share the same commit ({genesis['commit']}) "
-                    f"— this may indicate the repo was never fully rewritten, which is valid, "
-                    f"or there may be a data issue."
+                    "⚠ Genesis and Survivor share the same commit (%s) "
+                    "this may indicate the repo was never fully rewritten, which is valid, "
+                    "or there may be a data issue.",
+                    genesis["commit"],
                 )
 
             logger.info(
-                f"  Genesis  → {genesis.get('year')} | {genesis.get('file')}:{genesis.get('line')} | {genesis.get('commit')}"
+                "  Genesis  → %s | %s:%s | %s",
+                genesis.get("year"),
+                genesis.get("file"),
+                genesis.get("line"),
+                genesis.get("commit"),
             )
             logger.info(
-                f"  Survivor → {survivor.get('year')} | {survivor.get('file')}:{survivor.get('line')} | {survivor.get('commit')}"
+                "  Survivor → %s | %s:%s | %s",
+                survivor.get("year"),
+                survivor.get("file"),
+                survivor.get("line"),
+                survivor.get("commit"),
             )
 
             # 4. Write back — snapshots are preserved as-is
             tmp_file = json_file.with_suffix(f"{json_file.suffix}.tmp")
             with open(tmp_file, "w", encoding="utf-8") as f:
-                json.dump({"snapshots": snapshots, "fossils": fossils}, f, separators=(",", ":"))
+                json.dump(
+                    {"snapshots": snapshots, "fossils": fossils},
+                    f,
+                    separators=(",", ":"),
+                )
             os.replace(tmp_file, json_file)
 
-            logger.info(f"  ✓ Successfully wrote fossils for {repo_name}")
+            logger.info("  ✓ Successfully wrote fossils for %s", repo_name)
 
-        except Exception as e:
-            logger.error(f"  ✗ Error computing fossils for {repo_name}: {e}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("  ✗ Error computing fossils for %s: %s", repo_name, e)
 
 
 # ---------------------------------------------------------------------------
 # Incremental survivor-only update (used by GitHub Actions)
 # ---------------------------------------------------------------------------
 
+
 def update_survivor_fossils(data_dir, repo_urls):
+    # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """
     Refresh only the Survivor (Living) fossil for each repo.
     Skips writing to disk if the fossil's file:line:commit hasn't changed.
@@ -366,10 +411,10 @@ def update_survivor_fossils(data_dir, repo_urls):
         repo_url = repo_urls.get(repo_name)
 
         if not repo_url:
-            logger.warning(f"No URL found for '{repo_name}', skipping.")
+            logger.warning("No URL found for '%s', skipping.", repo_name)
             continue
 
-        logger.info(f"━━━ Checking survivor for: {repo_name} ━━━")
+        logger.info("━━━ Checking survivor for: %s ━━━", repo_name)
 
         # 1. Load existing data
         with open(json_file, "r", encoding="utf-8") as f:
@@ -383,7 +428,7 @@ def update_survivor_fossils(data_dir, repo_urls):
             existing_fossils = raw_data.get("fossils", {})
 
         if not snapshots:
-            logger.warning(f"  No snapshots found in {json_file.name}, skipping.")
+            logger.warning("  No snapshots found in %s, skipping.", json_file.name)
             continue
 
         existing_survivor = existing_fossils.get("survivor", {})
@@ -391,14 +436,14 @@ def update_survivor_fossils(data_dir, repo_urls):
         # 2. Clone or fetch the repo
         local_repo = temp_dir / repo_name
         if not local_repo.exists():
-            logger.info(f"  Cloning {repo_url}...")
+            logger.info("  Cloning %s...", repo_url)
             _run_command(["git", "clone", repo_url, str(local_repo)])
         else:
             logger.info("  Fetching latest...")
             try:
                 _run_command(["git", "fetch", "--all"], cwd=local_repo)
             except RuntimeError as e:
-                logger.warning(f"  Fetch failed (continuing with local): {e}")
+                logger.warning("  Fetch failed (continuing with local): %s", e)
 
         # 3. Compute new survivor
         try:
@@ -406,36 +451,52 @@ def update_survivor_fossils(data_dir, repo_urls):
 
             old_identity = _fossil_identity(existing_survivor)
             new_identity = _fossil_identity(new_survivor)
-            metadata_changed = (
-                existing_survivor.get("view_commit") != new_survivor.get("view_commit")
+            metadata_changed = existing_survivor.get("view_commit") != new_survivor.get(
+                "view_commit"
             )
 
             if old_identity == new_identity and not metadata_changed:
                 logger.info(
-                    f"  ✓ Survivor unchanged: {new_survivor.get('file')}:{new_survivor.get('line')} "
-                    f"(commit {new_survivor.get('commit')}) — skipping write."
+                    "  ✓ Survivor unchanged: %s:%s (commit %s) — skipping write.",
+                    new_survivor.get("file"),
+                    new_survivor.get("line"),
+                    new_survivor.get("commit"),
                 )
                 continue
 
             # Something changed — log the diff clearly
-            logger.info(f"  ↻ Survivor updated for {repo_name}:")
-            logger.info(f"    OLD: {existing_survivor.get('file')}:{existing_survivor.get('line')} @ {existing_survivor.get('commit')}")
-            logger.info(f"    NEW: {new_survivor.get('file')}:{new_survivor.get('line')} @ {new_survivor.get('commit')}")
+            logger.info("  ↻ Survivor updated for %s:", repo_name)
+            logger.info(
+                "    OLD: %s:%s @ %s",
+                existing_survivor.get("file"),
+                existing_survivor.get("line"),
+                existing_survivor.get("commit"),
+            )
+            logger.info(
+                "    NEW: %s:%s @ %s",
+                new_survivor.get("file"),
+                new_survivor.get("line"),
+                new_survivor.get("commit"),
+            )
 
             # 4. Write back — genesis is preserved, only survivor is replaced
             updated_fossils = {**existing_fossils, "survivor": new_survivor}
             tmp_file = json_file.with_suffix(f"{json_file.suffix}.tmp")
             with open(tmp_file, "w", encoding="utf-8") as f:
-                json.dump({"snapshots": snapshots, "fossils": updated_fossils}, f, separators=(",", ":"))
+                json.dump(
+                    {"snapshots": snapshots, "fossils": updated_fossils},
+                    f,
+                    separators=(",", ":"),
+                )
             os.replace(tmp_file, json_file)
 
-            logger.info(f"  ✓ Wrote updated survivor for {repo_name}")
+            logger.info("  ✓ Wrote updated survivor for %s", repo_name)
             updated_count += 1
 
-        except Exception as e:
-            logger.error(f"  ✗ Error updating survivor for {repo_name}: {e}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("  ✗ Error updating survivor for %s: %s", repo_name, e)
 
-    logger.info(f"\nSurvivor update complete. {updated_count} repo(s) updated.")
+    logger.info("\nSurvivor update complete. %d repo(s) updated.", updated_count)
     return updated_count
 
 
@@ -443,22 +504,40 @@ def update_survivor_fossils(data_dir, repo_urls):
 # Entry point
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
-    import argparse
 
-    REPO_URLS = {
-        "react":       "https://github.com/facebook/react.git",
-        "numpy":       "https://github.com/numpy/numpy.git",
-        "langchain":   "https://github.com/langchain-ai/langchain.git",
-        "zed":         "https://github.com/zed-industries/zed.git",
-        "claude-code": "https://github.com/anthropics/claude-code.git",
+def main():
+    # pylint: disable=duplicate-code
+    """
+    Main entry point for fossil backfill and incremental survivor checking.
+    """
+    config_path = "theseus.config.json"
+    if not os.path.exists(config_path):
+        logger.error("Configuration file not found: %s", config_path)
+        sys.exit(1)
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = json.load(f)
+
+    data_dir = config.get("dataDir", "./data")
+
+    # Build dynamically from config: name -> github URL
+    repo_urls = {
+        repo["name"]: f"https://github.com/{repo['repo']}.git"
+        for repo in config.get("repositories", [])
+        if "name" in repo and "repo" in repo
     }
 
-    parser = argparse.ArgumentParser(description="Manage fossil data for Theseus repos.")
+    if not repo_urls:
+        logger.error("No valid repositories found in configuration.")
+        sys.exit(1)
+
+    parser = argparse.ArgumentParser(
+        description="Manage fossil data for Theseus repos."
+    )
     parser.add_argument(
         "--only",
         metavar="REPO",
-        help=f"Process only this repo. Choices: {', '.join(REPO_URLS)}",
+        help=f"Process only this repo. Choices: {', '.join(repo_urls)}",
     )
     parser.add_argument(
         "--update-survivor",
@@ -472,16 +551,22 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.only:
-        if args.only not in REPO_URLS:
-            parser.error(f"Unknown repo '{args.only}'. Valid options: {', '.join(REPO_URLS)}")
-        selected = {args.only: REPO_URLS[args.only]}
-        logger.info(f"Running for single repo: {args.only}")
+        if args.only not in repo_urls:
+            parser.error(
+                f"Unknown repo '{args.only}'. Valid options: {', '.join(repo_urls)}"
+            )
+        selected = {args.only: repo_urls[args.only]}
+        logger.info("Running for single repo: %s", args.only)
     else:
-        selected = REPO_URLS
+        selected = repo_urls
 
     if args.update_survivor:
         logger.info("Mode: incremental survivor update")
-        update_survivor_fossils("./data", selected)
+        update_survivor_fossils(data_dir, selected)
     else:
         logger.info("Mode: full backfill (genesis + survivor)")
-        backfill_fossils("./data", selected)
+        backfill_fossils(data_dir, selected)
+
+
+if __name__ == "__main__":
+    main()

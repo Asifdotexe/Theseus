@@ -13,6 +13,7 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -161,16 +162,12 @@ def analyze_snapshots(repo_path: str, commit_hash: str) -> dict[str, int]:
     valid_files = [f for f in files if os.path.isfile(os.path.join(repo_path, f))]
 
     # Safe BLAME_WORKERS parsing with fallback
-    default_workers = min(20, (os.cpu_count() or 1) * 2)
+    max_workers = min(20, (os.cpu_count() or 1) * 2)
     try:
-        env_workers = os.environ.get("BLAME_WORKERS")
-        if env_workers is not None:
-            parsed = int(env_workers)
-            max_workers = max(1, min(parsed, 100))  # Clamp between 1-100
-        else:
-            max_workers = default_workers
+        if "BLAME_WORKERS" in os.environ:
+            max_workers = max(1, min(int(os.environ["BLAME_WORKERS"]), 100))
     except ValueError:
-        max_workers = default_workers
+        pass
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_file = {
@@ -218,6 +215,7 @@ def _atomic_write_json(
 
 
 def process_repository(repo_slug: str, data_dir: str) -> None:
+    # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """
     Orchestrate the extraction of Ship of Theseus code persistence data
     using an incremental load strategy by just processing the delta.
@@ -343,7 +341,7 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
             logger.info("Cleaning up temporary directory: %s", temp_repo_path)
             time.sleep(1)
 
-            def handle_remove_readonly(func, path, exc_info):
+            def handle_remove_readonly(func, path, _exc_info):
                 """Handle permission errors on Windows/Unix by adding write permission."""
                 try:
                     current_mode = os.stat(path).st_mode
@@ -353,14 +351,14 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
                     func(path)
                 except PermissionError as e:
                     logger.warning("Permission error cleaning up %s: %s", path, e)
-                except Exception as e:
+                except Exception as e:  # pylint: disable=broad-exception-caught
                     logger.warning("Error cleaning up %s: %s", path, e)
 
             for attempt in range(3):
                 try:
-                    shutil.rmtree(temp_repo_path, onerror=handle_remove_readonly)
+                    shutil.rmtree(temp_repo_path, onexc=handle_remove_readonly)
                     break
-                except Exception as e:
+                except Exception as e:  # pylint: disable=broad-exception-caught
                     if attempt < 2:
                         time.sleep(1)
                         logger.warning("Cleanup attempt %d failed: %s", attempt + 1, e)
@@ -371,23 +369,34 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
                         )
 
 
-if __name__ == "__main__":
+def main():
+    """
+    Main entry point. Loads configuration, creates output directory,
+    and runs the repository analysis pipeline for all specified targets.
+    """
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    DATA_OUTPUT_DIR = "./data"
+    config_path = "theseus.config.json"
+    if not os.path.exists(config_path):
+        logger.error("Configuration file not found: %s", config_path)
+        sys.exit(1)
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = json.load(f)
+
+    DATA_OUTPUT_DIR = config.get("dataDir", "./data")
     os.makedirs(DATA_OUTPUT_DIR, exist_ok=True)
 
     TARGETS = [
-        "anthropics/claude-code",
-        "facebook/react",
-        "langchain-ai/langchain",
-        "zed-industries/zed",
-        "numpy/numpy",
+        repo["repo"] for repo in config.get("repositories", []) if "repo" in repo
     ]
+    if not TARGETS:
+        logger.error("No valid repositories found in configuration.")
+        sys.exit(1)
 
     # Bound top-level workers by CPU count
     max_top_level_workers = min(
@@ -408,8 +417,12 @@ if __name__ == "__main__":
             target = futures[future]
             try:
                 future.result()
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.error("Failed to process %s: %s", target, e)
 
     overall_elapsed = time.perf_counter() - overall_start
     logger.info("TOTAL PIPELINE EXECUTION TIME: %.2f seconds", overall_elapsed)
+
+
+if __name__ == "__main__":
+    main()

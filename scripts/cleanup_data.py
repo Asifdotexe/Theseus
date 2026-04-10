@@ -1,5 +1,8 @@
+"""
+Module for cleaning up and minifying past snapshot data JSONs.
+"""
+
 import json
-import os
 from pathlib import Path
 
 

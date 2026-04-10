@@ -1,6 +1,9 @@
+"""
+Tests data integrity and schema validation for Theseus generated JSON files.
+"""
+
 import json
 from pathlib import Path
-import pytest
 
 
 def test_data_integrity_optimized_schema():
@@ -57,22 +60,22 @@ def test_data_integrity_optimized_schema():
                 continue
             if not fossil_data:  # Empty fossil object is OK
                 continue
-            assert "year" in fossil_data, (
-                f"Error in {json_file.name}: Fossil '{fossil_type}' missing 'year' field"
-            )
-            assert "content" in fossil_data, (
-                f"Error in {json_file.name}: Fossil '{fossil_type}' missing 'content' field"
-            )
+            assert (
+                "year" in fossil_data
+            ), f"Error in {json_file.name}: Fossil '{fossil_type}' missing 'year' field"
+            assert (
+                "content" in fossil_data
+            ), f"Error in {json_file.name}: Fossil '{fossil_type}' missing 'content' field"
             # New required fields: commit, line, file
-            assert "file" in fossil_data, (
-                f"Error in {json_file.name}: Fossil '{fossil_type}' missing 'file' field"
-            )
-            assert "commit" in fossil_data, (
-                f"Error in {json_file.name}: Fossil '{fossil_type}' missing 'commit' field"
-            )
-            assert "line" in fossil_data, (
-                f"Error in {json_file.name}: Fossil '{fossil_type}' missing 'line' field"
-            )
+            assert (
+                "file" in fossil_data
+            ), f"Error in {json_file.name}: Fossil '{fossil_type}' missing 'file' field"
+            assert (
+                "commit" in fossil_data
+            ), f"Error in {json_file.name}: Fossil '{fossil_type}' missing 'commit' field"
+            assert (
+                "line" in fossil_data
+            ), f"Error in {json_file.name}: Fossil '{fossil_type}' missing 'line' field"
 
 
 if __name__ == "__main__":
