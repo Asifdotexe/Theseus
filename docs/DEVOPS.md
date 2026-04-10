@@ -17,8 +17,8 @@ journey
       Perform Incremental Snapshot: 4: Python (analyse_repository.py)
       Blame Lines / Evaluate Entropy: 4: Python
       Update Survivor Fossils: 3: Python (add_fossils.py)
-    section Archiving
-      Clean & Minify Payload: 5: Python (cleanup_data.py)
+    section Persistence
+      Clean & Minify data payloads: 5: Python (cleanup_data.py)
       Commit Diff Data: 5: git config user.name "github-actions[bot]"
       Push JSON to Origin: 5: GitHub Actions
 ```
