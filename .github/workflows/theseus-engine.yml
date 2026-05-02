@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,13 +41,23 @@ jobs:
           # Genesis (historical fossil) is left completely untouched.
           poetry run python scripts/add_fossils.py --update-survivor
 
-      - name: Clean & Minify data payloads
+      - name: Clean & minify data payloads
         run: poetry run python scripts/cleanup_data.py
 
-      - name: Commit and push data updates
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add data/
-          git diff --quiet && git diff --staged --quiet || git commit -m "Update theseus persistence data across all repos"
-          git push
+      - name: Create pull request for data updates
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update theseus persistence data across all repos"
+          author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          branch: "chore/monthly-data-update"
+          delete-branch: true
+          title: "chore: monthly theseus data pipeline update"
+          body: |
+            ## Automated Theseus Data Engine Run
+            
+            This pull request contains the latest pre-computed persistence data, minified payloads, and fossil updates for the tracked repositories.
+            
+            **Trigger:** Monthly Schedule / Workflow Dispatch
+            **Action:** Deltas calculated and fossils verified.
+          labels: "automated pr, data update"
