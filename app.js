@@ -199,7 +199,7 @@ class TheseusVisualizer {
                 return (seriesIndex === 0) ? '#3bc7c7' : '#f0a33b';
             }
             const yearIdx = this.years.indexOf(seriesName);
-            return `hsl(${(180 + yearIdx * 40) % 360}, 70%, 55%)`;
+            return `hsl(${(180 + yearIdx * 40) % 360}, 85%, 70%)`;
         };
 
         // Create gradients for each series
@@ -279,7 +279,7 @@ class TheseusVisualizer {
         this.legend.innerHTML = '';
         const items = this.vizMode === 'identity'
             ? [{ label: 'Original Code', color: '#3bc7c7' }, { label: 'Refactored', color: '#f0a33b' }]
-            : this.years.map((y, i) => ({ label: y, color: `hsl(${(180 + i * 40) % 360}, 70%, 55%)` }));
+            : this.years.map((y, i) => ({ label: y, color: `hsl(${(180 + i * 40) % 360}, 85%, 70%)` }));
 
         items.forEach(item => {
             const div = document.createElement('div');
