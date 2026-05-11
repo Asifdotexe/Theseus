@@ -618,12 +618,7 @@ class TheseusVisualizer {
             a.target = '_blank';
             a.rel = 'noopener noreferrer';
             a.textContent = display;
-            a.style.color = 'inherit';
-            a.style.textDecoration = 'underline';
-            a.style.textDecorationColor = 'rgba(255,255,255,0.2)';
-            a.style.transition = 'color 0.3s ease';
-            a.addEventListener('mouseover', () => { a.style.color = 'var(--accent-cyan)'; });
-            a.addEventListener('mouseout', () => { a.style.color = 'inherit'; });
+            a.className = 'fossil-link';
             return a;
         };
 
