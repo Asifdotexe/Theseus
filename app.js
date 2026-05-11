@@ -528,15 +528,13 @@ class TheseusVisualizer {
         }
         document.getElementById('oldest-line').textContent = oldestSurviving;
 
-        if (birthYear && first.total > 0) {
-            const originalLinesInFirst = first[birthYear] || 0;
-            if (originalLinesInFirst > 0) {
-                const originalLinesInLast = last[birthYear] || 0;
-                const replaced = ((originalLinesInFirst - originalLinesInLast) / originalLinesInFirst) * 100;
-                document.getElementById('percent-replaced').textContent = `${Math.min(100, Math.max(0, replaced)).toFixed(1)}%`;
-            } else {
-                document.getElementById('percent-replaced').textContent = '0.0%';
-            }
+        const foundationLines = last[birthYear] || 0;
+        const totalLines = last.total || 0;
+        if (birthYear && totalLines > 0) {
+            const foundationPercent = (foundationLines / totalLines) * 100;
+            document.getElementById('percent-replaced').textContent = `${foundationPercent.toFixed(1)}%`;
+        } else if (totalLines > 0) {
+            document.getElementById('percent-replaced').textContent = '0.0%';
         } else {
             document.getElementById('percent-replaced').textContent = '--';
         }
@@ -544,7 +542,6 @@ class TheseusVisualizer {
         // Mean Code Age (Weighted average)
         const lastDate = new Date(last.date);
         const currentYear = lastDate.getFullYear();
-        const totalLines = last.total;
         if (totalLines > 0) {
             let totalAge = 0;
             this.years.forEach(y => {
