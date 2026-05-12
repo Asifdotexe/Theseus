@@ -11,13 +11,72 @@
       "name": "react",
       "file": "react_data.json",
       "description": "Component-based JavaScript library for building user interfaces.",
-      "repo": "facebook/react"
+      "repo": "facebook/react",
+      "milestones": [
+        {
+          "date": "2013-05",
+          "title": "React open sourced",
+          "description": "React was released as open source at JSConf 2013. Facebook engineers shared their internal tool with the world."
+        },
+        {
+          "date": "2017-09",
+          "title": "React rebuilt from scratch",
+          "description": "React 16 launched with a complete internal rewrite. Same API for users, but the engine was entirely rebuilt to be faster and more flexible."
+        },
+        {
+          "date": "2019-02",
+          "title": "Hooks changed everything",
+          "description": "React 16.8 introduced Hooks - a new way to use state and features without writing classes. This became the standard way to write React."
+        },
+        {
+          "date": "2024-04",
+          "title": "React 19 major update",
+          "description": "React 19 brought Server Components and new ways to handle forms and data. Check the next two milestones for data quirks."
+        },
+        {
+          "date": "2019-06",
+          "title": "Data quirk: code looks different",
+          "description": "The data shows weird patterns here because Facebook reorganized their code internally. Old code got re-attributed to new files."
+        },
+        {
+          "date": "2023-06",
+          "title": "Data quirk: lots missing",
+          "description": "This is a data quirk - many years of code seem to vanish. It's just how the data was collected at this point."
+        }
+      ]
     },
     {
       "name": "numpy",
       "file": "numpy_data.json",
       "description": "The fundamental package for scientific computing in Python.",
-      "repo": "numpy/numpy"
+      "repo": "numpy/numpy",
+      "milestones": [
+        {
+          "date": "2005-09",
+          "title": "NumPy is born",
+          "description": "Travis Oliphant merges Numeric and Numarray to create NumPy - the foundation of Python's scientific computing ecosystem."
+        },
+        {
+          "date": "2006-03",
+          "title": "NumPy 1.0 released",
+          "description": "NumPy 1.0 launches as a standalone package, separated from SciPy. This marks the official birth of NumPy as its own library."
+        },
+        {
+          "date": "2013-04",
+          "title": "Python 2 & 3 unified",
+          "description": "Major refactoring to create a unified codebase supporting both Python 2 and Python 3 without 2to3 conversion. Shipped in NumPy 1.8.0 (Oct 2013)."
+        },
+        {
+          "date": "2017-06",
+          "title": "Major features added",
+          "description": "NumPy 1.13 brings groundbreaking features: __array_ufunc__, np.block, and 50+ new functions transform the library."
+        },
+        {
+          "date": "2024-06",
+          "title": "NumPy 2.0 released",
+          "description": "First major release since 2006. Massive breaking changes with ABI break, new dtype system, and 10% fewer namespace objects."
+        }
+      ]
     },
     {
       "name": "zed",

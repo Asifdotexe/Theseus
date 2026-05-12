@@ -272,7 +272,56 @@ class TheseusVisualizer {
         // Interaction Components (Legend, Axes, Scrubber)
         this.renderLegend();
         this.renderAxes(g, chartWidth, chartHeight, xScale, yScale);
+        this.renderMilestoneMarkers(g, chartWidth, chartHeight, xScale);
         this.setupInteractivity(g, chartWidth, chartHeight, xScale, yScale);
+    }
+
+    renderMilestoneMarkers(g, chartWidth, chartHeight, xScale) {
+        const repoInfo = this.manifest.find(r => r.name === this.currentRepo);
+        if (!repoInfo || !repoInfo.milestones) return;
+
+        const tooltip = this;
+
+        repoInfo.milestones.forEach(m => {
+            const milestoneDate = new Date(m.date + '-01');
+            const xPos = xScale(milestoneDate);
+
+            if (xPos >= 0 && xPos <= chartWidth) {
+                const marker = g.append('g')
+                    .attr('class', 'milestone-marker')
+                    .attr('transform', `translate(${xPos}, 0)`)
+                    .style('cursor', 'pointer');
+
+                marker.append('text')
+                    .attr('x', 0)
+                    .attr('y', 18)
+                    .attr('text-anchor', 'middle')
+                    .attr('font-size', '14px')
+                    .attr('fill', '#8b5cf6')
+                    .text('★')
+                    .style('opacity', 0.8)
+                    .style('filter', 'drop-shadow(0 0 4px rgba(139, 92, 246, 0.6))');
+
+                marker.append('title')
+                    .text(m.title + ': ' + m.description);
+
+                marker.on('mouseenter', function() {
+                    d3.select(this).select('text')
+                        .transition()
+                        .duration(200)
+                        .attr('font-size', '18px')
+                        .style('opacity', 1);
+                });
+
+                marker.on('mouseleave', function() {
+                    d3.select(this).select('text')
+                        .transition()
+                        .duration(200)
+                        .attr('font-size', '14px')
+                        .style('opacity', 0.8);
+                });
+            }
+        });
     }
 
     renderLegend() {
@@ -444,7 +493,31 @@ class TheseusVisualizer {
         const isFoundationAlive = foundationVal > 0;
         const refactoredVal = point.total - foundationVal;
 
+        // Find milestone if close to current date
+        let milestoneHTML = '';
+        const repoInfo = this.manifest.find(r => r.name === this.currentRepo);
+        if (repoInfo && repoInfo.milestones) {
+            const pointDate = new Date(point.date);
+            for (const m of repoInfo.milestones) {
+                const milestoneDate = new Date(m.date + '-01');
+                const monthsDiff = Math.abs((pointDate - milestoneDate) / (1000 * 60 * 60 * 24 * 30));
+                if (monthsDiff <= 3) { // Within 3 months
+                    milestoneHTML = `
+                        <div class="milestone-banner">
+                            <div class="milestone-icon">🏛️</div>
+                            <div class="milestone-content">
+                                <div class="milestone-title">${m.title}</div>
+                                <div class="milestone-desc">${m.description}</div>
+                            </div>
+                        </div>
+                    `;
+                    break;
+                }
+            }
+        }
+
         this.tooltip.innerHTML = `
+            ${milestoneHTML}
             <div class="tooltip-header">Snapshot: ${dateStr}</div>
             <div class="tooltip-item" style="margin-bottom: 0.5rem; opacity: 0.9">
                 <span class="label-group">Total Project Size</span>

@@ -407,6 +407,49 @@ svg#main-chart {
     z-index: 100;
     min-width: 340px;
     box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8);
+}
+
+.milestone-banner {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(59, 199, 199, 0.1));
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.milestone-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.milestone-content {
+    flex: 1;
+}
+
+.milestone-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    margin-bottom: 0.35rem;
+}
+
+.milestone-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    opacity: 0.9;
+}
+
+.milestone-marker text {
+    transition: all 0.2s ease;
+}
+
+.milestone-marker:hover text {
+    filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.8));
+}
     transition: opacity 0.2s ease;
 }
 
