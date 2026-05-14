@@ -305,7 +305,7 @@ class TheseusVisualizer {
                 marker.append('title')
                     .text(m.title + ': ' + m.description);
 
-                marker.on('mouseenter', function() {
+                marker.on('mouseenter', function () {
                     d3.select(this).select('text')
                         .transition()
                         .duration(200)
@@ -313,7 +313,7 @@ class TheseusVisualizer {
                         .style('opacity', 1);
                 });
 
-                marker.on('mouseleave', function() {
+                marker.on('mouseleave', function () {
                     d3.select(this).select('text')
                         .transition()
                         .duration(200)
@@ -486,7 +486,7 @@ class TheseusVisualizer {
         const foundationYear = this.years[0];
         const foundationVal = point[foundationYear] || 0;
 
-        const existingYears = Object.keys(point).filter(k => k !== 'date' && k !== 'total').sort();
+        const existingYears = Object.keys(point).filter(k => k !== 'date' && k !== 'total' && point[k] > 0).sort();
         const oldestSurvivingYear = existingYears[0];
         const oldestSurvivingVal = point[oldestSurvivingYear] || 0;
 
@@ -544,7 +544,7 @@ class TheseusVisualizer {
                     <span class="percent-tag">${point.total > 0 ? ((refactoredVal / point.total) * 100).toFixed(1) : '0.0'}%</span>
                 </div>
             </div>
-            ${!isFoundationAlive && oldestSurvivingYear !== foundationYear ? `
+            ${!isFoundationAlive && oldestSurvivingYear && oldestSurvivingYear !== foundationYear ? `
             <div class="tooltip-item">
                 <div class="label-group">
                     <span class="color-dot" style="background: #8b5cf6"></span>
