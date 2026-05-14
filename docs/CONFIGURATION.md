@@ -13,7 +13,10 @@ The Ship of Theseus engine operates centrally off a single file: `theseus.config
       "name": "react",
       "repo": "facebook/react",
       "displayName": "React",
-      "description": "A JavaScript library for building user interfaces"
+      "description": "A JavaScript library for building user interfaces",
+      "milestones": [
+        { "date": "2013-05", "title": "Open Source", "description": "React is released." }
+      ]
     }
   ]
 }
@@ -33,6 +36,20 @@ The `repositories` array takes objects consisting of the following key attribute
 | `repo` | *String* | The GitHub repository namespace (the URL ending). The engine automatically strips trailing slashes and resolves this to `https://github.com/namespace/repo.git`. | `"django/django"` |
 | `displayName` | *String* | The aesthetic name rendered on UI Cards. | `"Django"` |
 | `description` | *String* | A short UI subheading clarifying what the project is. | `"The web framework for perfectionists with deadlines."` |
+| `milestones` | *Array* | An optional list of significant events to display on the timeline. | `[{"date": "2024-01", "title": "Launch"}]` |
+
+---
+
+## Milestone Structure
+
+The `milestones` array contains objects with the following properties:
+
+| Key | Type | Description | Example |
+| :--- | :---: | :--- | :--- |
+| `date` | *String* | The date of the milestone in `YYYY-MM` format. | `"2024-06"` |
+| `title` | *String* | A short, catchy name for the event shown in tooltips. | `"Monorepo Migration"` |
+| `description` | *String* | A concise explanation of the event. | `"Unified all integrations into a single repository."` |
+
 
 ---
 
