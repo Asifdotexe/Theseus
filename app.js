@@ -211,8 +211,8 @@ class TheseusVisualizer {
                 .attr("x1", "0%").attr("y1", "0%")
                 .attr("x2", "0%").attr("y2", "100%");
 
-            grad.append("stop").attr("offset", "0%").attr("stop-color", color).attr("stop-opacity", 0.6);
-            grad.append("stop").attr("offset", "100%").attr("stop-color", color).attr("stop-opacity", 0.05);
+            grad.append("stop").attr("offset", "0%").attr("stop-color", color).attr("stop-opacity", 0.9);
+            grad.append("stop").attr("offset", "100%").attr("stop-color", color).attr("stop-opacity", 0.4);
         });
 
         // Specialized gradients for Identity mode if needed
@@ -223,8 +223,8 @@ class TheseusVisualizer {
                     .attr("id", `grad-id-${id}`)
                     .attr("x1", "0%").attr("y1", "0%")
                     .attr("x2", "0%").attr("y2", "100%");
-                grad.append("stop").attr("offset", "0%").attr("stop-color", color).attr("stop-opacity", 0.6);
-                grad.append("stop").attr("offset", "100%").attr("stop-color", color).attr("stop-opacity", 0.05);
+                grad.append("stop").attr("offset", "0%").attr("stop-color", color).attr("stop-opacity", 0.9);
+                grad.append("stop").attr("offset", "100%").attr("stop-color", color).attr("stop-opacity", 0.4);
             });
         }
 
@@ -272,7 +272,56 @@ class TheseusVisualizer {
         // Interaction Components (Legend, Axes, Scrubber)
         this.renderLegend();
         this.renderAxes(g, chartWidth, chartHeight, xScale, yScale);
+        this.renderMilestoneMarkers(g, chartWidth, chartHeight, xScale);
         this.setupInteractivity(g, chartWidth, chartHeight, xScale, yScale);
+    }
+
+    renderMilestoneMarkers(g, chartWidth, chartHeight, xScale) {
+        const repoInfo = this.manifest.find(r => r.name === this.currentRepo);
+        if (!repoInfo || !repoInfo.milestones) return;
+
+        const tooltip = this;
+
+        repoInfo.milestones.forEach(m => {
+            const milestoneDate = new Date(m.date + '-01');
+            const xPos = xScale(milestoneDate);
+
+            if (xPos >= 0 && xPos <= chartWidth) {
+                const marker = g.append('g')
+                    .attr('class', 'milestone-marker')
+                    .attr('transform', `translate(${xPos}, 0)`)
+                    .style('cursor', 'pointer');
+
+                marker.append('text')
+                    .attr('x', 0)
+                    .attr('y', 18)
+                    .attr('text-anchor', 'middle')
+                    .attr('font-size', '14px')
+                    .attr('fill', '#3bc7c7')
+                    .text('★')
+                    .style('opacity', 0.8)
+                    .style('filter', 'drop-shadow(0 0 4px rgba(59, 199, 199, 0.6))');
+
+                marker.append('title')
+                    .text(m.title + ': ' + m.description);
+
+                marker.on('mouseenter', function () {
+                    d3.select(this).select('text')
+                        .transition()
+                        .duration(200)
+                        .attr('font-size', '18px')
+                        .style('opacity', 1);
+                });
+
+                marker.on('mouseleave', function () {
+                    d3.select(this).select('text')
+                        .transition()
+                        .duration(200)
+                        .attr('font-size', '14px')
+                        .style('opacity', 0.8);
+                });
+            }
+        });
     }
 
     renderLegend() {
@@ -434,54 +483,55 @@ class TheseusVisualizer {
             ? point.date.toISOString().split('T')[0]
             : point.date;
 
-        const oldestYear = this.years[0];
-        const originalVal = point[oldestYear] || 0;
+        const foundationYear = this.years[0];
+        const foundationVal = point[foundationYear] || 0;
 
-        // Find previous point to detect refactor
-        const idx = this.points.indexOf(point);
-        const prev = idx > 0 ? this.points[idx - 1] : null;
-        const prevOldVal = prev ? (prev[oldestYear] || 0) : null;
-        const isRefactor = prevOldVal && originalVal < prevOldVal * 0.85;
+        const existingYears = Object.keys(point).filter(k => k !== 'date' && k !== 'total' && point[k] > 0).sort();
+        const oldestSurvivingYear = existingYears[0];
+        const oldestSurvivingVal = point[oldestSurvivingYear] || 0;
 
-        const evolutionVal = point.total - originalVal;
+        const isFoundationAlive = foundationVal > 0;
+        const refactoredVal = point.total - foundationVal;
 
-        let refactorHTML = '';
-        if (originalVal === 0) {
-            refactorHTML = `
-                <div style="background: rgba(248, 113, 113, 0.15); border: 1px solid rgba(248, 113, 113, 0.4);
-                            padding: 1rem; border-radius: 1rem; margin-bottom: 1.25rem; color: #f87171;
-                            font-size: 0.85rem; line-height: 1.5;">
-                    <strong style="display: block; margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em;">Ship of Theseus: The Great Rebirth</strong>
-                    The original source code is now entirely gone.<br/><strong>Is this still the same codebase?</strong>
-                </div>
-            `;
-        } else if (isRefactor) {
-            refactorHTML = `
-                <div style="background: rgba(240, 163, 59, 0.15); border: 1px solid rgba(240, 163, 59, 0.4);
-                            padding: 0.75rem; border-radius: 0.75rem; margin-bottom: 1rem; color: #f0a33b;
-                            font-size: 0.85rem; line-height: 1.4;">
-                    <strong style="display: block; margin-bottom: 0.25rem;">Ship of Theseus: Major Refactor</strong>
-                    A significant part of the original source was refactored here.<br/>How much can you change before the identity shifts?
-                </div>
-            `;
+        // Find milestone if close to current date
+        let milestoneHTML = '';
+        const repoInfo = this.manifest.find(r => r.name === this.currentRepo);
+        if (repoInfo && repoInfo.milestones) {
+            const pointDate = new Date(point.date);
+            for (const m of repoInfo.milestones) {
+                const milestoneDate = new Date(m.date + '-01');
+                const monthsDiff = Math.abs((pointDate - milestoneDate) / (1000 * 60 * 60 * 24 * 30));
+                if (monthsDiff <= 3) { // Within 3 months
+                    milestoneHTML = `
+                        <div class="milestone-banner">
+                            <div class="milestone-icon">🏛️</div>
+                            <div class="milestone-content">
+                                <div class="milestone-title">${m.title}</div>
+                                <div class="milestone-desc">${m.description}</div>
+                            </div>
+                        </div>
+                    `;
+                    break;
+                }
+            }
         }
 
         this.tooltip.innerHTML = `
-            ${refactorHTML}
+            ${milestoneHTML}
             <div class="tooltip-header">Snapshot: ${dateStr}</div>
             <div class="tooltip-item" style="margin-bottom: 0.5rem; opacity: 0.9">
                 <span class="label-group">Total Project Size</span>
-                <strong class="value-group">${point.total.toLocaleString()} lines</strong>
+                <span class="value-group"><strong>${point.total.toLocaleString()} lines</strong></span>
             </div>
             <div class="tooltip-divider"></div>
             <div class="tooltip-item">
                 <div class="label-group">
                     <span class="color-dot" style="background: #3bc7c7"></span>
-                    <span>Original (${oldestYear})</span>
+                    <span>Foundation (${foundationYear})</span>
                 </div>
                 <div class="value-group">
-                    <strong>${originalVal.toLocaleString()}</strong>
-                    <span class="percent-tag">${point.total > 0 ? ((originalVal / point.total) * 100).toFixed(1) : '0.0'}%</span>
+                    <strong>${foundationVal.toLocaleString()}</strong>
+                    <span class="percent-tag">${point.total > 0 ? ((foundationVal / point.total) * 100).toFixed(1) : '0.0'}%</span>
                 </div>
             </div>
             <div class="tooltip-item">
@@ -490,10 +540,22 @@ class TheseusVisualizer {
                     <span>Refactored</span>
                 </div>
                 <div class="value-group">
-                    <strong>${evolutionVal.toLocaleString()}</strong>
-                    <span class="percent-tag">${point.total > 0 ? ((evolutionVal / point.total) * 100).toFixed(1) : '0.0'}%</span>
+                    <strong>${refactoredVal.toLocaleString()}</strong>
+                    <span class="percent-tag">${point.total > 0 ? ((refactoredVal / point.total) * 100).toFixed(1) : '0.0'}%</span>
                 </div>
             </div>
+            ${!isFoundationAlive && oldestSurvivingYear && oldestSurvivingYear !== foundationYear ? `
+            <div class="tooltip-item">
+                <div class="label-group">
+                    <span class="color-dot" style="background: #8b5cf6"></span>
+                    <span>Oldest surviving (${oldestSurvivingYear})</span>
+                </div>
+                <div class="value-group">
+                    <strong>${oldestSurvivingVal.toLocaleString()}</strong>
+                    <span class="percent-tag">${point.total > 0 ? ((oldestSurvivingVal / point.total) * 100).toFixed(1) : '0.0'}%</span>
+                </div>
+            </div>
+            ` : ''}
         `;
 
         // Positioning AFTER content injection
@@ -539,68 +601,20 @@ class TheseusVisualizer {
         }
         document.getElementById('oldest-line').textContent = oldestSurviving;
 
-        if (birthYear && first.total > 0) {
-            const originalLinesInFirst = first[birthYear] || 0;
-            if (originalLinesInFirst > 0) {
-                const originalLinesInLast = last[birthYear] || 0;
-                const replaced = ((originalLinesInFirst - originalLinesInLast) / originalLinesInFirst) * 100;
-                document.getElementById('percent-replaced').textContent = `${Math.min(100, Math.max(0, replaced)).toFixed(1)}%`;
-            } else {
-                document.getElementById('percent-replaced').textContent = '0.0%';
-            }
+        const foundationLines = last[birthYear] || 0;
+        const totalLines = last.total || 0;
+        if (birthYear && totalLines > 0) {
+            const foundationPercent = (foundationLines / totalLines) * 100;
+            document.getElementById('percent-replaced').textContent = `${foundationPercent.toFixed(1)}%`;
+        } else if (totalLines > 0) {
+            document.getElementById('percent-replaced').textContent = '0.0%';
         } else {
             document.getElementById('percent-replaced').textContent = '--';
         }
 
-        // Death counter: count times when original code dropped to 0
-        let deathCount = 0;
-        let wasDead = false;
-        for (const point of this.points) {
-            const origLines = point[birthYear] || 0;
-            if (origLines === 0 && !wasDead) {
-                deathCount++;
-                wasDead = true;
-            } else if (origLines > 0) {
-                wasDead = false;
-            }
-        }
-        document.getElementById('death-count').textContent = deathCount;
-
-        // 4. Modernization Velocity (Δ Old Code / Δ Time)
+        // Mean Code Age (Weighted average)
         const lastDate = new Date(last.date);
         const currentYear = lastDate.getFullYear();
-        const oldThreshold = currentYear - 3;
-
-        // Find snapshot approx 6 months ago (180 days)
-        const targetMs = lastDate.getTime() - (180 * 24 * 60 * 60 * 1000);
-        let prevSnapshot = this.points[0];
-        for (let i = this.points.length - 1; i >= 0; i--) {
-            if (new Date(this.points[i].date).getTime() <= targetMs) {
-                prevSnapshot = this.points[i];
-                break;
-            }
-        }
-
-        const getOldLines = (snap) => {
-            return this.years
-                .filter(y => y <= oldThreshold)
-                .reduce((sum, y) => sum + (snap[y] || 0), 0);
-        };
-
-        const oldNow = getOldLines(last);
-        const oldThen = getOldLines(prevSnapshot);
-        const months = Math.max(1, (lastDate - new Date(prevSnapshot.date)) / (30 * 24 * 60 * 60 * 1000));
-        const velocity = (oldThen - oldNow) / months;
-
-        const velEl = document.getElementById('modernization-velocity');
-        if (this.points.length < 2 || oldThen === 0) {
-            velEl.textContent = 'Stable';
-        } else {
-            velEl.textContent = `${Math.max(0, Math.round(velocity)).toLocaleString()}`;
-        }
-
-        // 5. Mean Code Age (Weighted average)
-        const totalLines = last.total;
         if (totalLines > 0) {
             let totalAge = 0;
             this.years.forEach(y => {
@@ -614,7 +628,7 @@ class TheseusVisualizer {
             document.getElementById('mean-code-age').textContent = '0.0 yrs';
         }
 
-        // 6. Peak Preservation (Largest legacy year)
+        // Peak Preservation (Largest legacy year)
         let peakYear = '--';
         let peakVal = 0;
         this.years.forEach(y => {
@@ -674,12 +688,7 @@ class TheseusVisualizer {
             a.target = '_blank';
             a.rel = 'noopener noreferrer';
             a.textContent = display;
-            a.style.color = 'inherit';
-            a.style.textDecoration = 'underline';
-            a.style.textDecorationColor = 'rgba(255,255,255,0.2)';
-            a.style.transition = 'color 0.3s ease';
-            a.addEventListener('mouseover', () => { a.style.color = 'var(--accent-cyan)'; });
-            a.addEventListener('mouseout', () => { a.style.color = 'inherit'; });
+            a.className = 'fossil-link';
             return a;
         };
 

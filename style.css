@@ -10,6 +10,20 @@
     --font-mono: 'JetBrains Mono', monospace;
 }
 
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    -webkit-clip-path: inset(50%);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -69,7 +83,6 @@ body {
     text-transform: uppercase;
     letter-spacing: 0.15em;
     color: var(--text-secondary);
-    opacity: 0.6;
     transition: all 0.3s ease;
     cursor: default;
 }
@@ -160,7 +173,6 @@ body {
     font-size: 0.9rem;
     cursor: pointer;
     transition: all 0.3s ease;
-    opacity: 0.6;
 }
 
 .mode-btn,
@@ -192,7 +204,6 @@ body {
     font-style: italic;
     font-size: 0.9rem;
     color: var(--text-secondary);
-    opacity: 0.7;
     margin-top: 0.5rem;
 }
 
@@ -401,6 +412,49 @@ svg#main-chart {
     transition: opacity 0.2s ease;
 }
 
+.milestone-banner {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(59, 199, 199, 0.1));
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.milestone-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.milestone-content {
+    flex: 1;
+}
+
+.milestone-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    margin-bottom: 0.35rem;
+}
+
+.milestone-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    opacity: 0.9;
+}
+
+.milestone-marker text {
+    transition: all 0.2s ease;
+}
+
+.milestone-marker:hover text {
+    filter: drop-shadow(0 0 8px rgba(59, 199, 199, 0.8));
+}
+
+
 .tooltip-header {
     font-size: 0.75rem;
     text-transform: uppercase;
@@ -417,6 +471,7 @@ svg#main-chart {
     align-items: center;
     font-size: 0.95rem;
     padding: 0.35rem 0;
+    gap: 1rem;
 }
 
 .label-group {
@@ -434,7 +489,7 @@ svg#main-chart {
 .value-group {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 1rem;
 }
 
 .percent-tag {
@@ -671,7 +726,6 @@ svg#main-chart {
 .footer-text {
     font-size: 0.8rem;
     color: var(--text-secondary);
-    opacity: 0.5;
 }
 
 /* Personal Narrative Section */
@@ -732,7 +786,6 @@ svg#main-chart {
     font-style: normal;
     font-size: 0.85rem;
     color: var(--text-secondary);
-    opacity: 0.7;
     display: block;
     margin-top: 0.5rem;
     letter-spacing: 0.05em;
@@ -764,15 +817,24 @@ svg#main-chart {
 .section-title {
     font-family: var(--font-serif);
     font-size: 2rem;
-    margin-bottom: 2rem;
+    margin-bottom: 0.5rem;
     color: var(--text-primary);
     text-align: center;
+}
+
+.fossil-hint {
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    opacity: 0.6;
+    margin-bottom: 2.5rem;
+    font-style: italic;
 }
 
 .fossil-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 2rem;
+    gap: 2.5rem;
 }
 
 @media (min-width: 768px) {
@@ -785,10 +847,12 @@ svg#main-chart {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 1.5rem;
-    padding: 1.25rem 1.5rem;
+    padding: 1.5rem 2rem;
     position: relative;
     overflow: hidden;
     text-align: left;
+    cursor: pointer;
+    transition: all 0.3s ease;
 }
 
 .fossil-card::before {
@@ -807,6 +871,7 @@ svg#main-chart {
 .fossil-card:hover {
     border-color: rgba(59, 199, 199, 0.3);
     box-shadow: 0 0 40px rgba(59, 199, 199, 0.1);
+    transform: translateY(-4px);
 }
 
 .fossil-header {
@@ -821,6 +886,20 @@ svg#main-chart {
     text-transform: uppercase;
     letter-spacing: 0.1em;
     color: var(--accent-cyan);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.fossil-label::after {
+    content: '↗';
+    font-size: 0.7rem;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.fossil-card:hover .fossil-label::after {
+    opacity: 0.6;
 }
 
 .fossil-year {
@@ -834,12 +913,30 @@ svg#main-chart {
 .fossil-meta {
     font-size: 0.8rem;
     color: var(--text-secondary);
-    margin-bottom: 1rem;
+    margin-bottom: 1.25rem;
     opacity: 0.6;
     display: flex;
-    gap: 0.5rem;
+    gap: 0.75rem;
     align-items: center;
     flex-wrap: wrap;
+}
+
+.fossil-link {
+    color: var(--accent-cyan);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: rgba(59, 199, 199, 0.4);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    background: rgba(59, 199, 199, 0.05);
+    display: inline-block;
+}
+
+.fossil-link:hover {
+    background: rgba(59, 199, 199, 0.15);
+    text-decoration-color: rgba(59, 199, 199, 0.8);
 }
 
 .fossil-commit {
@@ -875,4 +972,13 @@ svg#main-chart {
     opacity: 0.5;
     flex-shrink: 0;
     display: inline;
+}
+
+.fossil-description {
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--text-secondary);
+    opacity: 0.5;
+    margin-top: 1.25rem;
+    line-height: 1.5;
 }
