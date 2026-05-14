@@ -407,6 +407,7 @@ svg#main-chart {
     z-index: 100;
     min-width: 340px;
     box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8);
+    transition: opacity 0.2s ease;
 }
 
 .milestone-banner {
@@ -448,10 +449,9 @@ svg#main-chart {
 }
 
 .milestone-marker:hover text {
-    filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.8));
+    filter: drop-shadow(0 0 8px rgba(59, 199, 199, 0.8));
 }
-    transition: opacity 0.2s ease;
-}
+
 
 .tooltip-header {
     font-size: 0.75rem;

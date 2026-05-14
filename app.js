@@ -297,10 +297,10 @@ class TheseusVisualizer {
                     .attr('y', 18)
                     .attr('text-anchor', 'middle')
                     .attr('font-size', '14px')
-                    .attr('fill', '#8b5cf6')
+                    .attr('fill', '#3bc7c7')
                     .text('★')
                     .style('opacity', 0.8)
-                    .style('filter', 'drop-shadow(0 0 4px rgba(139, 92, 246, 0.6))');
+                    .style('filter', 'drop-shadow(0 0 4px rgba(59, 199, 199, 0.6))');
 
                 marker.append('title')
                     .text(m.title + ': ' + m.description);
