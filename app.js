@@ -205,7 +205,7 @@ class TheseusVisualizer {
                 return (seriesIndex === 0) ? 'oklch(68% 0.14 195)' : 'oklch(72% 0.16 65)';
             }
             const yearIdx = this.years.indexOf(seriesName);
-            return `hsl(${(180 + yearIdx * 40) % 360}, 85%, 70%)`;
+            return `oklch(70% 0.14 ${(195 + yearIdx * 36) % 360})`;
         };
 
         // Create gradients for each series
@@ -337,7 +337,7 @@ class TheseusVisualizer {
         this.legend.innerHTML = '';
         const items = this.vizMode === 'identity'
             ? [{ label: 'Original Code', color: 'oklch(68% 0.14 195)' }, { label: 'Refactored', color: 'oklch(72% 0.16 65)' }]
-            : this.years.map((y, i) => ({ label: y, color: `hsl(${(180 + i * 40) % 360}, 85%, 70%)` }));
+            : this.years.map((y, i) => ({ label: y, color: `oklch(70% 0.14 ${(195 + i * 36) % 360})` }));
 
         items.forEach(item => {
             const div = document.createElement('div');
