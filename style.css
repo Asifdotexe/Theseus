@@ -7,7 +7,6 @@
     --ember: oklch(72% 0.16 65);
     --ice: oklch(96% 0.003 255);
     --mist: oklch(65% 0.015 255);
-    --frost: oklch(45% 0.015 255);
     --border: oklch(20% 0.01 260 / 0.4);
     --border-hover: oklch(35% 0.02 260 / 0.5);
     --error-bg: oklch(20% 0.08 25 / 0.3);
@@ -365,9 +364,9 @@ body {
     animation-timing-function: var(--ease-out-quart);
 }
 
-.skeleton-wave.wave-1 { flex: 2; animation-delay: 0.05s; opacity: 0.5; }
-.skeleton-wave.wave-2 { flex: 3; animation-delay: 0.2s; opacity: 0.7; }
-.skeleton-wave.wave-3 { flex: 4; animation-delay: 0.35s; opacity: 1; }
+.skeleton-wave.wave-1 { flex: 2; animation-delay: 0.05s; opacity: 0.8; }
+.skeleton-wave.wave-2 { flex: 3; animation-delay: 0.2s; opacity: 0.6; }
+.skeleton-wave.wave-3 { flex: 4; animation-delay: 0.35s; opacity: 0.4; }
 
 .skeleton-x-axis {
     display: flex;
@@ -447,6 +446,7 @@ svg#main-chart rect[tabindex="0"]:focus {
     border-radius: var(--radius-md);
     z-index: 100;
     min-width: 340px;
+    max-width: min(340px, 90vw);
     box-shadow: 0 30px 60px oklch(0% 0 0 / 0.8);
     opacity: 0;
     visibility: hidden;
@@ -644,10 +644,12 @@ svg#main-chart rect[tabindex="0"]:focus {
     z-index: 10;
 }
 
-.help-icon:hover {
+.help-icon:hover,
+.help-icon:focus-visible {
     background: var(--seafoam);
     color: var(--abyss);
     border-color: var(--seafoam);
+    outline: none;
 }
 
 .help-icon::after {
@@ -678,7 +680,8 @@ svg#main-chart rect[tabindex="0"]:focus {
     text-align: center;
 }
 
-.help-icon:hover::after {
+.help-icon:hover::after,
+.help-icon:focus-visible::after {
     opacity: 1;
 }
 
@@ -776,7 +779,8 @@ svg#main-chart rect[tabindex="0"]:focus {
 
 .narrative-content {
     font-family: var(--font-serif);
-    font-size: 1.15rem;
+    font-size: 1.2rem;
+    font-weight: 500;
     line-height: 1.8;
     color: var(--mist);
     display: flex;

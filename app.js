@@ -297,6 +297,9 @@ class TheseusVisualizer {
                 const marker = g.append('g')
                     .attr('class', 'milestone-marker')
                     .attr('transform', `translate(${xPos}, 0)`)
+                    .attr('tabindex', '0')
+                    .attr('role', 'button')
+                    .attr('aria-label', `${m.title}: ${m.description}`)
                     .style('cursor', 'pointer');
 
                 marker.append('text')
@@ -314,21 +317,26 @@ class TheseusVisualizer {
 
                 const animDur = this.reducedMotion ? 0 : 200;
 
-                marker.on('mouseenter', function () {
+                const enlarge = function () {
                     d3.select(this).select('text')
                         .transition()
                         .duration(animDur)
                         .attr('font-size', '18px')
                         .style('opacity', 1);
-                });
+                };
 
-                marker.on('mouseleave', function () {
+                const shrink = function () {
                     d3.select(this).select('text')
                         .transition()
                         .duration(animDur)
                         .attr('font-size', '14px')
                         .style('opacity', 0.8);
-                });
+                };
+
+                marker.on('mouseenter', enlarge)
+                    .on('mouseleave', shrink)
+                    .on('focus', enlarge)
+                    .on('blur', shrink);
             }
         });
     }
@@ -672,7 +680,7 @@ class TheseusVisualizer {
             let totalAge = 0;
             this.years.forEach(y => {
                 const lines = last[y] || 0;
-                const age = currentYear - parseInt(y);
+                const age = currentYear - parseInt(y, 10);
                 totalAge += lines * age;
             });
             const meanAge = totalAge / totalLines;
@@ -685,7 +693,7 @@ class TheseusVisualizer {
         let peakYear = '--';
         let peakVal = 0;
         this.years.forEach(y => {
-            if (parseInt(y) < currentYear) {
+            if (parseInt(y, 10) < currentYear) {
                 const val = last[y] || 0;
                 if (val > peakVal) {
                     peakVal = val;
@@ -757,6 +765,30 @@ class TheseusVisualizer {
         document.getElementById('survivor-content').textContent = survivor.content ? survivor.content.trim() : 'No fossil data';
         document.getElementById('survivor-commit').textContent = survivor.view_commit || survivor.commit || '';
 
+        // Keyboard interaction for fossil card divs
+        ['fossil-genesis', 'fossil-survivor'].forEach(id => {
+            const card = document.getElementById(id);
+            if (!card) return;
+            card.setAttribute('tabindex', '0');
+            card.setAttribute('role', 'link');
+
+            const openLink = () => {
+                const link = card.querySelector('.fossil-link');
+                if (link && link.href) window.open(link.href, '_blank');
+            };
+
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.fossil-link')) return;
+                openLink();
+            });
+
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openLink();
+                }
+            });
+        });
     }
 
     createSVGElement(tag, attrs = {}) {
