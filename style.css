@@ -239,7 +239,7 @@ body {
     margin-top: var(--space-xs);
 }
 
-.glass-panel {
+.surface-panel {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-xl);
@@ -248,7 +248,7 @@ body {
     transition: border-color var(--duration-short) var(--ease-out-quart);
 }
 
-.glass-panel:hover {
+.surface-panel:hover {
     border-color: var(--border-hover);
 }
 
@@ -362,7 +362,7 @@ body {
 
 .skeleton-wave {
     border-radius: 0;
-    animation-timing-function: ease-in-out;
+    animation-timing-function: var(--ease-out-quart);
 }
 
 .skeleton-wave.wave-1 { flex: 2; animation-delay: 0.05s; opacity: 0.5; }
@@ -416,7 +416,7 @@ body {
 }
 
 .hidden {
-    display: none !important;
+    display: none;
 }
 
 .chart-wrapper {
@@ -458,7 +458,7 @@ svg#main-chart rect[tabindex="0"]:focus {
 }
 
 .custom-tooltip.hidden {
-    display: block !important;
+    display: block;
 }
 
 .custom-tooltip:not(.hidden) {
