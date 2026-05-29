@@ -170,15 +170,30 @@ class TheseusVisualizer {
         const chartHeight = height - this.margin.top - this.margin.bottom;
 
         const svg = d3.select(this.canvas);
-        svg.selectAll("*").remove();
+        const needsBuild = !this._built;
+        const dimsChanged = this._chartWidth !== chartWidth || this._chartHeight !== chartHeight;
 
         this.focusIndex = undefined;
 
-        // Containers
-        const g = svg.append("g")
-            .attr("transform", `translate(${this.margin.left},${this.margin.top})`);
+        // — Structural phase (first time, resize, or repo switch) —
+        if (needsBuild || dimsChanged) {
+            svg.selectAll("*").remove();
+            svg.append("defs");
+            this._g = svg.append("g")
+                .attr("class", "chart-container")
+                .attr("transform", `translate(${this.margin.left},${this.margin.top})`);
+            this._chartWidth = chartWidth;
+            this._chartHeight = chartHeight;
+            this._built = true;
+        }
 
-        // Scales
+        const g = this._g;
+
+        // — Clear data-driven children (keep g itself, defs, and their attributes) —
+        g.selectAll("g.axis-y, g.axis-x, .milestone-marker, path.layer, .scrubber-line, rect[fill='transparent']").remove();
+        svg.select("defs").selectAll("linearGradient").remove();
+
+        // — Scales —
         const xScale = d3.scaleTime()
             .domain(d3.extent(this.points, d => d.date))
             .range([0, chartWidth]);
@@ -197,9 +212,8 @@ class TheseusVisualizer {
                 .range([chartHeight, 0]);
         }
 
-        // Color Logic & Gradients
-        const defs = svg.append("defs");
-
+        // — Gradients —
+        const defs = svg.select("defs");
         const getBaseColor = (seriesName, seriesIndex) => {
             if (this.vizMode === 'identity') {
                 return (seriesIndex === 0) ? 'oklch(68% 0.14 195)' : 'oklch(72% 0.16 65)';
@@ -208,20 +222,16 @@ class TheseusVisualizer {
             return `oklch(70% 0.14 ${(195 + yearIdx * 36) % 360})`;
         };
 
-        // Create gradients for each series
-        const seriesKeys = this.vizMode === 'identity' ? [this.years[0], 'refactored'] : this.years;
         this.years.forEach((year, i) => {
             const color = getBaseColor(year, i);
             const grad = defs.append("linearGradient")
                 .attr("id", `grad-${year}`)
                 .attr("x1", "0%").attr("y1", "0%")
                 .attr("x2", "0%").attr("y2", "100%");
-
             grad.append("stop").attr("offset", "0%").attr("stop-color", color).attr("stop-opacity", 0.9);
             grad.append("stop").attr("offset", "100%").attr("stop-color", color).attr("stop-opacity", 0.4);
         });
 
-        // Specialized gradients for Identity mode if needed
         if (this.vizMode === 'identity') {
             ['original', 'refactored'].forEach(id => {
                 const color = id === 'original' ? 'oklch(68% 0.14 195)' : 'oklch(72% 0.16 65)';
@@ -234,7 +244,7 @@ class TheseusVisualizer {
             });
         }
 
-        // Stack & Area
+        // — Stack & Area (data join) —
         const stackGenerator = d3.stack()
             .keys(this.years);
 
@@ -246,7 +256,6 @@ class TheseusVisualizer {
             .y1(d => yScale(this.yScaleMode === 'log' ? Math.max(1, d[1]) : d[1]))
             .curve(d3.curveMonotoneX);
 
-        // Render Layers (Data Join)
         const layers = g.selectAll(".layer")
             .data(stackedData, d => d.key);
 
@@ -276,11 +285,11 @@ class TheseusVisualizer {
 
         layers.exit().remove();
 
-        // Interaction Components (Legend, Axes, Scrubber)
-        this.renderLegend();
+        // — Axes, Milestones, Interaction, Legend —
         this.renderAxes(g, chartWidth, chartHeight, xScale, yScale);
         this.renderMilestoneMarkers(g, chartWidth, chartHeight, xScale);
         this.setupInteractivity(g, chartWidth, chartHeight, xScale, yScale);
+        this.renderLegend();
     }
 
     renderMilestoneMarkers(g, chartWidth, chartHeight, xScale) {
