@@ -7,6 +7,7 @@
     --ember: oklch(72% 0.16 65);
     --ice: oklch(96% 0.003 255);
     --mist: oklch(65% 0.015 255);
+    --frost: oklch(45% 0.015 255);
     --border: oklch(20% 0.01 260 / 0.4);
     --border-hover: oklch(35% 0.02 260 / 0.5);
     --error-bg: oklch(20% 0.08 25 / 0.3);
@@ -15,8 +16,6 @@
     --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace;
     --text-xs: 0.65rem;
     --text-sm: 0.85rem;
-    --text-xl: 1.5rem;
-    --weight-medium: 500;
     --weight-semibold: 600;
     --space-xs: 0.5rem;
     --space-sm: 1rem;
@@ -1177,6 +1176,11 @@ svg#main-chart rect[tabindex="0"]:focus {
     border-color: var(--seafoam);
 }
 
+.repo-request-input:focus-visible {
+    border-color: var(--seafoam);
+    box-shadow: 0 0 0 2px var(--seafoam);
+}
+
 .repo-request-hint {
     display: block;
     font-family: var(--font-mono);
@@ -1224,11 +1228,16 @@ svg#main-chart rect[tabindex="0"]:focus {
 }
 
 .repo-request-feedback {
+    flex-basis: 100%;
     font-family: var(--font-mono);
     font-size: var(--text-sm);
-    margin-top: var(--space-sm);
     min-height: 1.5em;
-    transition: opacity var(--duration-instant) var(--ease-out-quart);
+    opacity: 0;
+    transition: opacity var(--duration-short) var(--ease-out-quart);
+}
+
+.repo-request-feedback.visible {
+    opacity: 1;
 }
 
 .repo-request-feedback.error {

@@ -128,6 +128,7 @@ class TheseusVisualizer {
         function setFeedback(message, type) {
             feedback.textContent = message;
             feedback.className = 'repo-request-feedback' + (type ? ' ' + type : '');
+            feedback.classList.toggle('visible', !!message);
         }
 
         function validateUrl(raw) {
@@ -147,7 +148,11 @@ class TheseusVisualizer {
         form.addEventListener('submit', (e) => {
             e.preventDefault();
             const raw = input.value.trim();
-            if (!raw) return;
+            if (!raw) {
+                input.classList.add('invalid');
+                setFeedback('Enter a repository URL or owner/repo name.', 'error');
+                return;
+            }
 
             const slug = validateUrl(raw);
             if (!slug) {
@@ -289,7 +294,7 @@ class TheseusVisualizer {
         const g = this._g;
 
         // — Clear data-driven children (keep g itself, defs, and their attributes) —
-        g.selectAll("g.axis-y, g.axis-x, .milestone-marker, path.layer, .scrubber-line, rect[fill='transparent']").remove();
+        g.selectAll("g.axis-y, g.axis-x, .milestone-marker, path.layer, .scrubber-line, rect[fill='transparent'], text.axis-label").remove();
         svg.select("defs").selectAll("linearGradient").remove();
 
         // — Scales —
@@ -909,7 +914,8 @@ class TheseusVisualizer {
         // Keyboard interaction for fossil card divs
         ['fossil-genesis', 'fossil-survivor'].forEach(id => {
             const card = document.getElementById(id);
-            if (!card) return;
+            if (!card || card.dataset.fossilInited) return;
+            card.dataset.fossilInited = 'true';
             card.setAttribute('tabindex', '0');
             card.setAttribute('role', 'link');
 
