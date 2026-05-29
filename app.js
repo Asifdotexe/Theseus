@@ -196,7 +196,7 @@ class TheseusVisualizer {
 
         const getBaseColor = (seriesName, seriesIndex) => {
             if (this.vizMode === 'identity') {
-                return (seriesIndex === 0) ? '#3bc7c7' : '#f0a33b';
+                return (seriesIndex === 0) ? 'oklch(68% 0.14 195)' : 'oklch(72% 0.16 65)';
             }
             const yearIdx = this.years.indexOf(seriesName);
             return `hsl(${(180 + yearIdx * 40) % 360}, 85%, 70%)`;
@@ -218,7 +218,7 @@ class TheseusVisualizer {
         // Specialized gradients for Identity mode if needed
         if (this.vizMode === 'identity') {
             ['original', 'refactored'].forEach(id => {
-                const color = id === 'original' ? '#3bc7c7' : '#f0a33b';
+                const color = id === 'original' ? 'oklch(68% 0.14 195)' : 'oklch(72% 0.16 65)';
                 const grad = defs.append("linearGradient")
                     .attr("id", `grad-id-${id}`)
                     .attr("x1", "0%").attr("y1", "0%")
@@ -297,7 +297,7 @@ class TheseusVisualizer {
                     .attr('y', 18)
                     .attr('text-anchor', 'middle')
                     .attr('font-size', '14px')
-                    .attr('fill', '#3bc7c7')
+                    .attr('fill', 'oklch(68% 0.14 195)')
                     .text('★')
                     .style('opacity', 0.8)
                     .style('filter', 'drop-shadow(0 0 4px rgba(59, 199, 199, 0.6))');
@@ -327,7 +327,7 @@ class TheseusVisualizer {
     renderLegend() {
         this.legend.innerHTML = '';
         const items = this.vizMode === 'identity'
-            ? [{ label: 'Original Code', color: '#3bc7c7' }, { label: 'Refactored', color: '#f0a33b' }]
+            ? [{ label: 'Original Code', color: 'oklch(68% 0.14 195)' }, { label: 'Refactored', color: 'oklch(72% 0.16 65)' }]
             : this.years.map((y, i) => ({ label: y, color: `hsl(${(180 + i * 40) % 360}, 85%, 70%)` }));
 
         items.forEach(item => {
@@ -383,13 +383,13 @@ class TheseusVisualizer {
             .call(yAxis);
 
         yGroup.selectAll(".tick line")
-            .attr("stroke", "#374151")
+            .attr("stroke", "oklch(30% 0.01 260)")
             .attr("stroke-dasharray", "3,3")
             .attr("stroke-opacity", 0.5);
 
         yGroup.selectAll("text")
             .attr("x", -10)
-            .attr("fill", "#6b7280")
+            .attr("fill", "oklch(45% 0.015 255)")
             .attr("font-size", "10px")
             .attr("font-family", "inherit");
 
@@ -407,20 +407,20 @@ class TheseusVisualizer {
 
         xGroup.selectAll("text")
             .attr("y", 15)
-            .attr("fill", "#8b949e")
+            .attr("fill", "oklch(55% 0.015 255)")
             .attr("font-size", "11px")
             .attr("letter-spacing", "0.05em")
             .attr("font-family", "inherit");
 
-        xGroup.select(".domain").attr("stroke", "rgba(255, 255, 255, 0.1)");
-        xGroup.selectAll(".tick line").attr("stroke", "rgba(255, 255, 255, 0.1)");
+        xGroup.select(".domain").attr("stroke", "oklch(100% 0 0 / 0.1)");
+        xGroup.selectAll(".tick line").attr("stroke", "oklch(100% 0 0 / 0.1)");
 
         // Axis Labels
         g.append("text")
             .attr("class", "axis-label")
             .attr("x", width / 2)
             .attr("y", height + 40)
-            .attr("fill", "#6b7280")
+            .attr("fill", "oklch(45% 0.015 255)")
             .attr("font-size", "12px")
             .attr("text-anchor", "middle")
             .text("Time");
@@ -430,7 +430,7 @@ class TheseusVisualizer {
             .attr("transform", "rotate(-90)")
             .attr("x", -height / 2)
             .attr("y", -45)
-            .attr("fill", "#6b7280")
+            .attr("fill", "oklch(45% 0.015 255)")
             .attr("font-size", "12px")
             .attr("text-anchor", "middle")
             .text("Lines of Code");
@@ -526,7 +526,7 @@ class TheseusVisualizer {
             <div class="tooltip-divider"></div>
             <div class="tooltip-item">
                 <div class="label-group">
-                    <span class="color-dot" style="background: #3bc7c7"></span>
+                    <span class="color-dot" style="background: oklch(68% 0.14 195)"></span>
                     <span>Foundation (${foundationYear})</span>
                 </div>
                 <div class="value-group">
@@ -536,7 +536,7 @@ class TheseusVisualizer {
             </div>
             <div class="tooltip-item">
                 <div class="label-group">
-                    <span class="color-dot" style="background: #f0a33b"></span>
+                    <span class="color-dot" style="background: oklch(72% 0.16 65)"></span>
                     <span>Refactored</span>
                 </div>
                 <div class="value-group">
@@ -547,7 +547,7 @@ class TheseusVisualizer {
             ${!isFoundationAlive && oldestSurvivingYear && oldestSurvivingYear !== foundationYear ? `
             <div class="tooltip-item">
                 <div class="label-group">
-                    <span class="color-dot" style="background: #8b5cf6"></span>
+                    <span class="color-dot" style="background: oklch(52% 0.22 285)"></span>
                     <span>Oldest surviving (${oldestSurvivingYear})</span>
                 </div>
                 <div class="value-group">
