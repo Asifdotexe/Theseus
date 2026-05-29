@@ -24,6 +24,8 @@ class TheseusVisualizer {
         this.vizMode = 'chronological'; // 'chronological' | 'identity'
         this.yScaleMode = 'linear'; // 'linear' | 'log'
         this.fossils = {};
+        this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        this.animDuration = this.reducedMotion ? 0 : 800;
 
         this.init();
     }
@@ -259,11 +261,12 @@ class TheseusVisualizer {
             .attr("d", areaGenerator)
             .style("opacity", 0)
             .transition()
-            .duration(800)
+            .duration(this.animDuration)
+            .delay((d, i) => this.reducedMotion ? 0 : i * 50)
             .style("opacity", 1);
 
         layers.transition()
-            .duration(800)
+            .duration(this.animDuration)
             .attr("d", areaGenerator)
             .attr("fill", getFill);
 
@@ -300,15 +303,17 @@ class TheseusVisualizer {
                     .attr('fill', 'oklch(68% 0.14 195)')
                     .text('★')
                     .style('opacity', 0.8)
-                    .style('filter', 'drop-shadow(0 0 4px rgba(59, 199, 199, 0.6))');
+                    .style('filter', 'drop-shadow(0 0 4px oklch(68% 0.14 195 / 0.6))');
 
                 marker.append('title')
                     .text(m.title + ': ' + m.description);
 
+                const animDur = this.reducedMotion ? 0 : 200;
+
                 marker.on('mouseenter', function () {
                     d3.select(this).select('text')
                         .transition()
-                        .duration(200)
+                        .duration(animDur)
                         .attr('font-size', '18px')
                         .style('opacity', 1);
                 });
@@ -316,7 +321,7 @@ class TheseusVisualizer {
                 marker.on('mouseleave', function () {
                     d3.select(this).select('text')
                         .transition()
-                        .duration(200)
+                        .duration(animDur)
                         .attr('font-size', '14px')
                         .style('opacity', 0.8);
                 });
@@ -441,7 +446,7 @@ class TheseusVisualizer {
             .attr("class", "scrubber-line hidden")
             .attr("y1", 0)
             .attr("y2", height)
-            .attr("stroke", "rgba(255,255,255,0.2)")
+            .attr("stroke", "oklch(100% 0 0 / 0.2)")
             .attr("stroke-width", 1);
 
         const bisect = d3.bisector(d => d.date).left;

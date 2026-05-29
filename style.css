@@ -211,6 +211,12 @@ body {
     transform: translateY(-1px);
 }
 
+.repo-btn:active,
+.mode-btn:active,
+.scale-btn:active {
+    transform: scale(0.97);
+}
+
 .repo-btn:focus-visible,
 .mode-btn:focus-visible,
 .scale-btn:focus-visible {
@@ -239,8 +245,7 @@ body {
     border-radius: var(--radius-xl);
     overflow: hidden;
     position: relative;
-    transition: border-color var(--duration-short) var(--ease-out-quart),
-        transform var(--duration-medium) var(--ease-out-quint);
+    transition: border-color var(--duration-short) var(--ease-out-quart);
 }
 
 .glass-panel:hover {
@@ -388,6 +393,17 @@ body {
     100% { opacity: 0.3; }
 }
 
+@keyframes error-slide {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 .error-banner {
     background: var(--error-bg);
     color: var(--error-text);
@@ -396,6 +412,7 @@ body {
     border-radius: var(--radius-sm);
     margin-bottom: var(--space-sm);
     text-align: center;
+    animation: error-slide var(--duration-short) var(--ease-out-quart) both;
 }
 
 .hidden {
@@ -426,7 +443,24 @@ svg#main-chart {
     z-index: 100;
     min-width: 340px;
     box-shadow: 0 30px 60px oklch(0% 0 0 / 0.8);
-    transition: opacity var(--duration-short) var(--ease-out-quart);
+    opacity: 0;
+    visibility: hidden;
+    transform: scale(0.96);
+    transform-origin: top left;
+    transition: opacity var(--duration-short) var(--ease-out-quart),
+        transform var(--duration-short) var(--ease-out-quart),
+        visibility 0s var(--duration-short);
+}
+
+.custom-tooltip.hidden {
+    display: block !important;
+}
+
+.custom-tooltip:not(.hidden) {
+    opacity: 1;
+    visibility: visible;
+    transform: scale(1);
+    transition-delay: 0s;
 }
 
 .milestone-banner {
@@ -688,8 +722,7 @@ svg#main-chart {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-xl);
-    transition: border-color var(--duration-short) var(--ease-out-quart),
-        transform var(--duration-medium) var(--ease-out-quint);
+    transition: border-color var(--duration-short) var(--ease-out-quart);
 }
 
 .info-card:hover {
@@ -838,6 +871,17 @@ svg#main-chart {
     }
 }
 
+@keyframes fossil-enter {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 .fossil-card {
     background: oklch(100% 0 0 / 0.02);
     border: 1px solid oklch(100% 0 0 / 0.1);
@@ -847,9 +891,14 @@ svg#main-chart {
     overflow: hidden;
     text-align: left;
     cursor: pointer;
+    animation: fossil-enter var(--duration-medium) var(--ease-out-quint) both;
     transition: transform var(--duration-medium) var(--ease-out-quint),
         border-color var(--duration-short) var(--ease-out-quart),
         box-shadow var(--duration-medium) var(--ease-out-quint);
+}
+
+.fossil-card:nth-child(2) {
+    animation-delay: 100ms;
 }
 
 .fossil-card::before {
@@ -978,4 +1027,53 @@ svg#main-chart {
     opacity: 0.5;
     margin-top: 1.25rem;
     line-height: 1.5;
+}
+
+@media (pointer: coarse) {
+    .repo-btn,
+    .mode-btn,
+    .scale-btn {
+        min-height: 44px;
+    }
+
+    .fossil-card {
+        min-height: 44px;
+    }
+
+    .help-icon {
+        width: 44px;
+        height: 44px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+
+    .insight-card:hover,
+    .fossil-card:hover {
+        transform: none;
+    }
+
+    .author-badge:hover {
+        transform: none;
+    }
+
+    .repo-btn:hover,
+    .mode-btn:hover,
+    .scale-btn:hover {
+        transform: none;
+    }
+
+    .skeleton-pill,
+    .skeleton-tick,
+    .skeleton-wave {
+        animation: none;
+    }
 }
