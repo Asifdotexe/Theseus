@@ -53,6 +53,7 @@ class TheseusVisualizer {
         }
 
         window.addEventListener('resize', () => this.debouncedRender());
+        this.setupKeyboardShortcuts();
     }
 
     setupModeToggle() {
@@ -78,6 +79,42 @@ class TheseusVisualizer {
 
             this.yScaleMode = btn.dataset.scale;
             if (this.currentData) this.renderChart();
+        });
+    }
+
+    setupKeyboardShortcuts() {
+        document.addEventListener('keydown', (e) => {
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+            const key = e.key;
+
+            if (key >= '1' && key <= '9') {
+                const idx = parseInt(key, 10) - 1;
+                const btns = document.querySelectorAll('.repo-btn');
+                if (idx < btns.length) {
+                    btns[idx].click();
+                }
+                return;
+            }
+
+            if (key === 'm' || key === 'M') {
+                const active = document.querySelector('.mode-btn.active');
+                if (active) {
+                    const next = active.nextElementSibling || active.previousElementSibling;
+                    if (next) next.click();
+                }
+                return;
+            }
+
+            if (key === 's' || key === 'S') {
+                const active = document.querySelector('.scale-btn.active');
+                if (active) {
+                    const next = active.nextElementSibling || active.previousElementSibling;
+                    if (next) next.click();
+                }
+                return;
+            }
         });
     }
 

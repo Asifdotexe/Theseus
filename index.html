@@ -102,8 +102,8 @@
 
             <div id="chart-container" class="chart-wrapper">
                 <div id="chart-legend" class="chart-legend"></div>
-                <svg id="main-chart" preserveAspectRatio="none" role="img" aria-label="Lines of code over time, stacked area chart showing code composition by year of origin"></svg>
-                <div id="tooltip" class="custom-tooltip hidden"></div>
+                <svg id="main-chart" preserveAspectRatio="none" role="img" aria-label="Lines of code over time, stacked area chart showing code composition by year of origin" aria-describedby="tooltip"></svg>
+                <div id="tooltip" class="custom-tooltip hidden" role="tooltip"></div>
             </div>
         </section>
 
@@ -291,6 +291,9 @@
     </main>
 
     <script src="app.js"></script>
+<!-- impeccable-live-start -->
+<script src="http://localhost:8401/live.js"></script>
+<!-- impeccable-live-end -->
 </body>
 
 </html>
