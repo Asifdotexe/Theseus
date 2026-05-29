@@ -8,8 +8,10 @@ Consolidates helpers that were previously duplicated across
 * ``get_default_branch`` — determine a repo's default git branch
 """
 
-import subprocess
+import json
 import logging
+import subprocess
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,26 @@ def run_command(cmd: list[str], cwd: str | None = None) -> str:
             f"Command failed: {' '.join(str(c) for c in cmd)} "
             f"(exit {e.returncode}) — {e.stderr.strip()}"
         ) from e
+
+
+def load_config(config_path: str = "theseus.config.json") -> dict:
+    """
+    Load and return the project configuration file (``theseus.config.json``).
+
+    Exits with status 1 if the file is missing or malformed.
+
+    :param config_path: Path to the JSON configuration file.
+    :return: Parsed configuration dictionary.
+    """
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        logger.error("Configuration file not found: %s", config_path)
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        logger.error("Configuration file %s is malformed: %s", config_path, e)
+        sys.exit(1)
 
 
 def get_default_branch(repo_path: str | None = None) -> str:

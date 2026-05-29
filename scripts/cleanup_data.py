@@ -3,7 +3,15 @@ Module for cleaning up and minifying past snapshot data JSONs.
 """
 
 import json
+import os
+import sys
 from pathlib import Path
+
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+
+from _utils import load_config
 
 
 def cleanup_data(data_dir: str) -> bool:
@@ -36,7 +44,7 @@ def cleanup_data(data_dir: str) -> bool:
                 data = json.load(f)
 
             # Handle both list and object schemas
-            snapshots = data.get("snapshots", data) if isinstance(data, dict) else data
+            snapshots = data.get("snapshots", []) if isinstance(data, dict) else data
 
             for snapshot in snapshots:
                 # 1. Remove redundant total_lines
@@ -71,15 +79,7 @@ def cleanup_data(data_dir: str) -> bool:
     return had_failures
 
 def main():
-    import sys
-    config_path = "theseus.config.json"
-    if not Path(config_path).exists():
-        print(f"Configuration file not found: {config_path}")
-        sys.exit(1)
-
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = json.load(f)
-
+    config = load_config()
     data_dir = config.get("dataDir", "./data")
     if cleanup_data(data_dir):
         print("One or more files failed to clean up. Exiting non-zero.")

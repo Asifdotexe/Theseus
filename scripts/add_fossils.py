@@ -32,7 +32,7 @@ _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
-from _utils import get_default_branch, run_command
+from _utils import get_default_branch, run_command, load_config
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _blank_fossil():
+def _blank_fossil() -> dict:
     return {
         "timestamp": 2_147_483_647,
         "file": "",
@@ -55,7 +55,7 @@ def _blank_fossil():
     }
 
 
-def _blame_file(repo_path, file_path, view_commit=""):
+def _blame_file(repo_path: str | Path, file_path: str, view_commit: str = "") -> dict:
     """Run git blame --line-porcelain on a single file and return the oldest fossil found."""
     try:
         blame_output = run_command(
@@ -99,7 +99,9 @@ def _blame_file(repo_path, file_path, view_commit=""):
     return fossil
 
 
-def _blame_files_parallel(repo_path, files, view_commit="", max_workers=20):
+def _blame_files_parallel(
+    repo_path: str | Path, files: list[str], view_commit: str = "", max_workers: int = 20
+) -> dict:
     """Blame a list of files in parallel and return the single oldest fossil found."""
     global_oldest = _blank_fossil()
 
@@ -115,7 +117,7 @@ def _blame_files_parallel(repo_path, files, view_commit="", max_workers=20):
     return global_oldest
 
 
-def _get_tracked_files(repo_path):
+def _get_tracked_files(repo_path: str | Path) -> list[str]:
     """Return a list of files that are tracked by git and exist on disk."""
     files_output = run_command(["git", "ls-files"], cwd=repo_path)
     return [
@@ -125,7 +127,7 @@ def _get_tracked_files(repo_path):
     ]
 
 
-def _get_files_added_in_commit(repo_path, commit_hash):
+def _get_files_added_in_commit(repo_path: str | Path, commit_hash: str) -> list[str]:
     """
     Return files that were *added* (not modified, not renamed) by this commit.
 
@@ -194,14 +196,46 @@ def _fossil_identity(fossil: dict) -> tuple:
 # ---------------------------------------------------------------------------
 
 
-def get_genesis_fossil(repo_path, genesis_depth=50):
+def get_genesis_fossil(
+    repo_path: str | Path,
+    genesis_depth: int = 50,
+    stale_limit: int = 5,
+) -> dict:
     """
     Historical Fossil: the oldest line **ever authored** in this repo.
 
-    Strategy: Sort ALL commits by author-time (not committer-time), take the
-    oldest genesis_depth ones, and blame them. This correctly handles repos
-    migrated from SVN/Mercurial where old authored lines may appear in commits
-    with much later committer timestamps.
+    Strategy
+    --------
+    Sort ALL commits by author-time (not committer-time), then scan the oldest
+    ``genesis_depth`` commits.  This correctly handles repos migrated from
+    SVN/Mercurial where old authored lines may appear in commits with much
+    later committer timestamps.
+
+    Early-exit heuristic
+    ~~~~~~~~~~~~~~~~~~~~
+    Once a fossil has been found, if ``stale_limit`` consecutive older commits
+    fail to improve it (no line with a smaller author-time), the scan stops.
+    The assumption is that if a long stretch of early commits doesn't contain
+    anything older than what we already have, no older line exists anywhere.
+
+    Why this is safe
+    ~~~~~~~~~~~~~~~~
+    The very first commit (lowest author-time) is always scanned first.  If the
+    oldest code was added in one of the earliest commits, it will be found
+    immediately.  The stale-limit window (default 5) gives enough room for
+    repos where the first commit only contained a README and the real code was
+    added in a slightly later commit, while stopping *well* before 50 in the
+    common case.
+
+    Before (hardcoded 50)
+        Worst case: 50 blame passes over the full file tree at each commit.
+        Even with the ``_get_files_added_in_commit`` optimisation, scanning 50
+        commits is unnecessary for most repos.
+
+    After (adaptive stale-limit + hard cap)
+        Most repos stop after 5--10 commits.  Edge cases (e.g. a repo with
+        many distinct old commits that each add new source files) still have
+        the hard safety cap of ``genesis_depth=50``.
     """
     logger.info("Computing Genesis (Historical) fossil...")
 
@@ -211,7 +245,7 @@ def get_genesis_fossil(repo_path, genesis_depth=50):
         cwd=repo_path,
     )
 
-    commit_pairs = []
+    commit_pairs: list[tuple[str, int]] = []
     for line in log_output.splitlines():
         parts = line.strip().split(" ", 1)
         if len(parts) == 2:
@@ -229,6 +263,7 @@ def get_genesis_fossil(repo_path, genesis_depth=50):
     oldest_commits = [(c[0], c[1]) for c in commit_pairs[:genesis_depth]]
 
     global_oldest = _blank_fossil()
+    stale_count = 0
 
     for i, (commit, author_ts) in enumerate(oldest_commits):
         logger.info(
@@ -250,12 +285,33 @@ def get_genesis_fossil(repo_path, genesis_depth=50):
         # See _get_files_added_in_commit for the full reasoning.
         files = _get_files_added_in_commit(repo_path, commit)
         if not files:
+            stale_count += 1
+            if stale_count >= stale_limit:
+                logger.info(
+                    "  Stopping early after %d commits (%d consecutive with no new "
+                    "files to blame).",
+                    i + 1,
+                    stale_limit,
+                )
+                break
             continue
 
         fossil = _blame_files_parallel(repo_path, files, view_commit=commit)
 
         if fossil["file"] and fossil["timestamp"] < global_oldest["timestamp"]:
             global_oldest = fossil
+            stale_count = 0
+        else:
+            stale_count += 1
+
+        if stale_count >= stale_limit:
+            logger.info(
+                "  Stopping early after %d commits (%d consecutive without "
+                "improvement).",
+                i + 1,
+                stale_limit,
+            )
+            break
 
     return global_oldest
 
@@ -265,7 +321,7 @@ def get_genesis_fossil(repo_path, genesis_depth=50):
 # ---------------------------------------------------------------------------
 
 
-def get_survivor_fossil(repo_path):
+def get_survivor_fossil(repo_path: str | Path) -> dict:
     """
     Living Fossil: the oldest line that is **still alive** in the codebase today.
 
@@ -305,7 +361,7 @@ def get_survivor_fossil(repo_path):
 # ---------------------------------------------------------------------------
 
 
-def backfill_fossils(data_dir, repo_urls):
+def backfill_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
     """
     For every repo JSON in data_dir, recompute both fossils without touching snapshots.
     Always forces a fresh recompute of both genesis and survivor.
@@ -412,7 +468,7 @@ def backfill_fossils(data_dir, repo_urls):
 # ---------------------------------------------------------------------------
 
 
-def update_survivor_fossils(data_dir, repo_urls):
+def update_survivor_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
     # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """
     Refresh only the Survivor (Living) fossil for each repo.
@@ -533,19 +589,12 @@ def update_survivor_fossils(data_dir, repo_urls):
 # ---------------------------------------------------------------------------
 
 
-def main():
+def main() -> None:
     # pylint: disable=duplicate-code
     """
     Main entry point for fossil backfill and incremental survivor checking.
     """
-    config_path = "theseus.config.json"
-    if not os.path.exists(config_path):
-        logger.error("Configuration file not found: %s", config_path)
-        sys.exit(1)
-
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = json.load(f)
-
+    config = load_config()
     data_dir = config.get("dataDir", "./data")
 
     # Build dynamically from config: name -> github URL

@@ -23,7 +23,7 @@ _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
-from _utils import run_command, get_default_branch
+from _utils import run_command, get_default_branch, load_config
 
 logger = logging.getLogger(__name__)
 
@@ -141,8 +141,11 @@ def analyze_snapshots(repo_path: str, commit_hash: str) -> dict[str, int]:
 
     valid_files = [f for f in files if os.path.isfile(os.path.join(repo_path, f))]
 
-    # Safe BLAME_WORKERS parsing with fallback
-    max_workers = min(20, (os.cpu_count() or 1) * 2)
+    # Safe BLAME_WORKERS parsing with fallback.
+    # Default caps at 8 to avoid I/O contention on HDDs (git blame is
+    # I/O-bound, not CPU-bound, so the CPU-count multiplier doesn't apply).
+    # Override via BLAME_WORKERS env var (clamped 1-100).
+    max_workers = min(8, (os.cpu_count() or 1) * 2)
     try:
         if "BLAME_WORKERS" in os.environ:
             max_workers = max(1, min(int(os.environ["BLAME_WORKERS"]), 100))
@@ -364,14 +367,7 @@ def main():
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    config_path = "theseus.config.json"
-    if not os.path.exists(config_path):
-        logger.error("Configuration file not found: %s", config_path)
-        sys.exit(1)
-
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = json.load(f)
-
+    config = load_config()
     DATA_OUTPUT_DIR = config.get("dataDir", "./data")
     os.makedirs(DATA_OUTPUT_DIR, exist_ok=True)
 
