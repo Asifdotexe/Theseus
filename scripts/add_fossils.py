@@ -23,10 +23,16 @@ import concurrent.futures
 import json
 import logging
 import os
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+# Ensure sibling imports from _utils work in all invocation contexts
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+
+from _utils import get_default_branch, run_command
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -35,24 +41,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _run_command(cmd, cwd=None):
-    try:
-        result = subprocess.run(
-            cmd,
-            cwd=str(cwd) if cwd else None,
-            capture_output=True,
-            text=True,
-            check=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        return result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(
-            f"Command failed: {' '.join(str(c) for c in cmd)} — {e.stderr}"
-        ) from e
 
 
 def _blank_fossil():
@@ -70,7 +58,7 @@ def _blank_fossil():
 def _blame_file(repo_path, file_path, view_commit=""):
     """Run git blame --line-porcelain on a single file and return the oldest fossil found."""
     try:
-        blame_output = _run_command(
+        blame_output = run_command(
             ["git", "blame", "--line-porcelain", file_path],
             cwd=repo_path,
         )
@@ -86,7 +74,7 @@ def _blame_file(repo_path, file_path, view_commit=""):
             line_num += 1
             timestamp = current_commit_data.get("author-time")
             content = line.lstrip("\t").strip()
-            if timestamp and timestamp < fossil["timestamp"] and content:
+            if timestamp is not None and timestamp < fossil["timestamp"] and content:
                 fossil["timestamp"] = timestamp
                 fossil["file"] = file_path
                 fossil["content"] = content
@@ -129,7 +117,7 @@ def _blame_files_parallel(repo_path, files, view_commit="", max_workers=20):
 
 def _get_tracked_files(repo_path):
     """Return a list of files that are tracked by git and exist on disk."""
-    files_output = _run_command(["git", "ls-files"], cwd=repo_path)
+    files_output = run_command(["git", "ls-files"], cwd=repo_path)
     return [
         f
         for f in files_output.splitlines()
@@ -137,41 +125,68 @@ def _get_tracked_files(repo_path):
     ]
 
 
-def _get_default_branch(repo_path):
-    """Figure out the default branch name (main vs master vs something else)."""
-    # Try the symref approach first (works with a full clone)
-    for strategy in [
-        ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
-        ["git", "rev-parse", "--abbrev-ref", "origin/HEAD"],
-    ]:
-        try:
-            result = _run_command(strategy, cwd=repo_path)
-            # Strip the "origin/" prefix if present without collapsing slashes
-            branch = result[len("origin/") :] if result.startswith("origin/") else result
-            if branch:
-                return branch
-        except RuntimeError:
-            continue
+def _get_files_added_in_commit(repo_path, commit_hash):
+    """
+    Return files that were *added* (not modified, not renamed) by this commit.
 
-    # Fall back to checking which of the usual suspects exists
-    for branch in ("main", "master", "develop"):
-        try:
-            _run_command(
-                ["git", "rev-parse", "--verify", f"origin/{branch}"], cwd=repo_path
-            )
-            return branch
-        except RuntimeError:
-            continue
+    Uses ``git diff-tree --diff-filter=A`` which only lists new files
+    introduced in the commit, compared to its parent(s).  For the root
+    commit (no parent) the command fails so we fall back to ``git ls-files``.
 
-    return "HEAD"
+    Complexity
+    ----------
+    Before (``_get_tracked_files``):
+        O(all_tracked_files) per commit — every file at that checkout is
+        blamed, even files that were added centuries earlier.
+
+    After (``_get_files_added_in_commit``):
+        O(added_files_only) per commit — only files that first appear in
+        this commit are blamed.  Files from older commits were already
+        handled in earlier iterations of the genesis loop, so re-blaming
+        them is redundant.
+
+    Why this is safe
+    ----------------
+    ``git blame --line-porcelain`` traces each line back to the commit
+    that *last modified* that line.  If a file was added at commit K and
+    never touched again, blaming it at K or at any later commit returns
+    the same author-time == K.  If a file was added at K and modified at
+    K+2, the modified lines will show author-time == K+2, which is never
+    older than K.  Therefore the oldest line of any file is found by
+    blaming that file exactly once — at the commit where it first
+    appeared in the tree.
+    """
+    try:
+        # For non-root commits — compare against parent(s)
+        files_output = run_command(
+            [
+                "git",
+                "diff-tree",
+                "--no-commit-id",
+                "-r",
+                "--diff-filter=A",
+                "--name-only",
+                commit_hash,
+            ],
+            cwd=repo_path,
+        )
+        return files_output.splitlines() if files_output else []
+    except RuntimeError:
+        # Root commit has no parent — all tracked files are "new"
+        files_output = run_command(["git", "ls-files"], cwd=repo_path)
+        return files_output.splitlines()
 
 
 def _fossil_identity(fossil: dict) -> tuple:
     """Return a hashable key that identifies which line this fossil refers to.
-    We use file + line-number + blame commit (the actual authoring commit).
-    This detects when the living fossil moves to a different line or file.
+
+    Uses (file, blame_commit) — the authoring commit uniquely identifies the
+    content.  Line numbers are intentionally excluded: a line that stays in
+    the same file but shifts position (due to insertions/deletions above it)
+    is still the same fossil.  Only a change in file or authoring commit
+    (meaning the line was actually rewritten) counts as a different fossil.
     """
-    return (fossil.get("file", ""), fossil.get("line", 0), fossil.get("commit", ""))
+    return (fossil.get("file", ""), fossil.get("commit", ""))
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +206,7 @@ def get_genesis_fossil(repo_path, genesis_depth=50):
     logger.info("Computing Genesis (Historical) fossil...")
 
     # Get every commit with its author-time so we can sort by actual authorship date
-    log_output = _run_command(
+    log_output = run_command(
         ["git", "log", "--all", "--pretty=format:%H %at"],
         cwd=repo_path,
     )
@@ -224,12 +239,16 @@ def get_genesis_fossil(repo_path, genesis_depth=50):
             author_ts,
         )
         try:
-            _run_command(["git", "checkout", "--force", commit], cwd=repo_path)
+            run_command(["git", "checkout", "--force", commit], cwd=repo_path)
         except RuntimeError as e:
             logger.warning("  Could not checkout %s: %s", commit[:7], e)
             continue
 
-        files = _get_tracked_files(repo_path)
+        # Only blame files that were *added* in this commit, not every
+        # tracked file.  Files added in older commits have already been
+        # blamed in previous loop iterations — re-blaming them is wasted work.
+        # See _get_files_added_in_commit for the full reasoning.
+        files = _get_files_added_in_commit(repo_path, commit)
         if not files:
             continue
 
@@ -254,17 +273,17 @@ def get_survivor_fossil(repo_path):
     """
     logger.info("Computing Survivor (Living) fossil...")
 
-    default_branch = _get_default_branch(repo_path)
+    default_branch = get_default_branch(repo_path)
     logger.info("  Checking out default branch: %s", default_branch)
 
     try:
-        _run_command(
+        run_command(
             ["git", "checkout", "-B", default_branch, f"origin/{default_branch}"],
             cwd=repo_path,
         )
     except RuntimeError:
         # Detached HEAD fallback
-        _run_command(
+        run_command(
             ["git", "checkout", "--force", f"origin/{default_branch}"], cwd=repo_path
         )
 
@@ -326,11 +345,11 @@ def backfill_fossils(data_dir, repo_urls):
         local_repo = temp_dir / repo_name
         if not local_repo.exists():
             logger.info("  Cloning %s...", repo_url)
-            _run_command(["git", "clone", repo_url, str(local_repo)])
+            run_command(["git", "clone", repo_url, str(local_repo)])
         else:
             logger.info("  Repo already cloned — fetching latest...")
             try:
-                _run_command(["git", "fetch", "--all"], cwd=local_repo)
+                run_command(["git", "fetch", "--all"], cwd=local_repo)
             except RuntimeError as e:
                 logger.warning("  Fetch failed (continuing with local): %s", e)
 
@@ -445,11 +464,11 @@ def update_survivor_fossils(data_dir, repo_urls):
         local_repo = temp_dir / repo_name
         if not local_repo.exists():
             logger.info("  Cloning %s...", repo_url)
-            _run_command(["git", "clone", repo_url, str(local_repo)])
+            run_command(["git", "clone", repo_url, str(local_repo)])
         else:
             logger.info("  Fetching latest...")
             try:
-                _run_command(["git", "fetch", "--all"], cwd=local_repo)
+                run_command(["git", "fetch", "--all"], cwd=local_repo)
             except RuntimeError as e:
                 logger.warning("  Fetch failed (continuing with local): %s", e)
 

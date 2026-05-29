@@ -12,40 +12,20 @@ import logging
 import os
 import shutil
 import stat
-import subprocess
 import sys
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
 from itertools import groupby
 
+# Ensure sibling imports from _utils work in all invocation contexts
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+
+from _utils import run_command, get_default_branch
+
 logger = logging.getLogger(__name__)
-
-
-def _run_command(cmd: list[str], cwd: str | None = None) -> str:
-    """
-    Execute a shell command and return its standard output
-
-    :param cmd: List of arguments forming the command.
-    :param cwd: Directory path where the command should be executed.
-    :return: Decoded standard output of the command.
-    """
-    try:
-        result = subprocess.run(
-            cmd,
-            cwd=cwd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=True,
-        )
-        return result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(
-            f"Command '{' '.join(cmd)}' failed with exit code {e.returncode}"
-        ) from e
 
 
 def clone_repository(repo_slug: str, clone_dir: str) -> None:
@@ -57,7 +37,7 @@ def clone_repository(repo_slug: str, clone_dir: str) -> None:
     """
     logger.info("Cloning %s into %s...", repo_slug, clone_dir)
     repo_url = f"https://github.com/{repo_slug}.git"
-    _run_command(["git", "clone", repo_url, clone_dir])
+    run_command(["git", "clone", repo_url, clone_dir])
 
 
 def get_snapshots(repo_path: str) -> list[tuple[str, str]]:
@@ -69,7 +49,7 @@ def get_snapshots(repo_path: str) -> list[tuple[str, str]]:
     :param repo_path: Path to the git repository.
     :return: A list of tuples, each containing a 'YYYY-MM' period and the corresponding commit hash.
     """
-    log_output = _run_command(
+    log_output = run_command(
         cmd=["git", "log", "--pretty=format:%H|%cI"], cwd=repo_path
     )
 
@@ -137,7 +117,7 @@ def _blame_single_file(repo_path: str, file: str) -> dict[str, int]:
     Designed to be run concurrently in a ThreadPool.
     """
     try:
-        blame_output = _run_command(
+        blame_output = run_command(
             ["git", "blame", "--line-porcelain", file], cwd=repo_path
         )
         return _parse_blame_output(blame_output)
@@ -153,8 +133,8 @@ def analyze_snapshots(repo_path: str, commit_hash: str) -> dict[str, int]:
     :param commit_hash: Hash of the commit to analyze
     :return: Dictionary mapping birth year to line count
     """
-    _run_command(["git", "checkout", commit_hash], cwd=repo_path)
-    files_output = _run_command(["git", "ls-files"], cwd=repo_path)
+    run_command(["git", "checkout", commit_hash], cwd=repo_path)
+    files_output = run_command(["git", "ls-files"], cwd=repo_path)
     files = files_output.splitlines()
 
     age_distribution = defaultdict(int)
@@ -239,14 +219,18 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
             logger.info(
                 "Repository %s already exists locally. Fetching latest...", repo_name
             )
-            _run_command(["git", "fetch", "--all"], cwd=temp_repo_path)
-            for branch in ["main", "master"]:
-                try:
-                    _run_command(["git", "checkout", branch], cwd=temp_repo_path)
-                    break
-                except RuntimeError:
-                    continue
-            _run_command(["git", "pull"], cwd=temp_repo_path)
+            run_command(["git", "fetch", "--all"], cwd=temp_repo_path)
+            default_branch = get_default_branch(temp_repo_path)
+            if default_branch == "HEAD":
+                raise RuntimeError(
+                    f"[{repo_name}] Cannot determine default branch after fetch. "
+                    "Tried: main, master, develop, origin/HEAD."
+                )
+            run_command(
+                ["git", "checkout", "-B", default_branch, f"origin/{default_branch}"],
+                cwd=temp_repo_path,
+            )
+            run_command(["git", "pull"], cwd=temp_repo_path)
 
         state = load_existing_state(output_json_path)
         historical_snapshots = state["snapshots"]
