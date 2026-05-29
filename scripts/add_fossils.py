@@ -34,7 +34,6 @@ if _SCRIPTS_DIR not in sys.path:
 
 from _utils import get_default_branch, run_command, load_config
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -88,7 +87,7 @@ def _blame_file(repo_path: str | Path, file_path: str, view_commit: str = "") ->
                 fossil["line"] = line_num
         else:
             parts = line.split(" ")
-            if parts and len(parts[0]) in (40, 64):
+            if parts and len(parts[0]) in (40, 64) and all(c in "0123456789abcdef" for c in parts[0].lower()):
                 current_commit_data = {"commit": parts[0]}
             elif line.startswith("author-time ") and len(parts) >= 2:
                 try:
@@ -594,6 +593,7 @@ def main() -> None:
     """
     Main entry point for fossil backfill and incremental survivor checking.
     """
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     config = load_config()
     data_dir = config.get("dataDir", "./data")
 

@@ -96,7 +96,7 @@ def _parse_blame_output(blame_output: str) -> dict[str, int]:
                 file_distribution[year] += 1
         else:
             parts = line.split(" ")
-            if len(parts[0]) in (40, 64):
+            if len(parts[0]) in (40, 64) and all(c in "0123456789abcdef" for c in parts[0].lower()):
                 current_commit = parts[0]
             elif parts[0] == "author-time":
                 try:
@@ -212,7 +212,9 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
     :param data_dir: Path where the resulting JSON data will be saved.
     """
     repo_name = repo_slug.split("/")[-1]
-    temp_repo_path = f"./temp_workdir_{repo_name}"
+    # Use the full slug (org/repo) in the temp dir name to avoid collisions
+    # when two different orgs have repos with the same name.
+    temp_repo_path = f"./temp_workdir_{repo_slug.replace('/', '__')}"
     output_json_path = os.path.join(data_dir, f"{repo_name}_data.json")
 
     try:
@@ -326,7 +328,6 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
     finally:
         if os.path.exists(temp_repo_path):
             logger.info("Cleaning up temporary directory: %s", temp_repo_path)
-            time.sleep(1)
 
             def handle_remove_readonly(func, path, _exc_info):
                 """Handle permission errors on Windows/Unix by adding write permission."""
@@ -347,8 +348,14 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
                     break
                 except Exception as e:  # pylint: disable=broad-exception-caught
                     if attempt < 2:
-                        time.sleep(1)
-                        logger.warning("Cleanup attempt %d failed: %s", attempt + 1, e)
+                        backoff = 2 ** attempt
+                        logger.warning(
+                            "Cleanup attempt %d failed, retrying in %ds: %s",
+                            attempt + 1,
+                            backoff,
+                            e,
+                        )
+                        time.sleep(backoff)
                     else:
                         logger.error(
                             "Failed to clean up temporary directory after 3 attempts: %s",
