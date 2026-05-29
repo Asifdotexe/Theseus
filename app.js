@@ -389,44 +389,77 @@ class TheseusVisualizer {
 
     renderLegend() {
         this.legend.innerHTML = '';
-        const items = this.vizMode === 'identity'
-            ? [{ label: 'Original Code', color: 'oklch(68% 0.14 195)' }, { label: 'Refactored', color: 'oklch(72% 0.16 65)' }]
-            : this.years.map((y, i) => ({ label: y, color: `oklch(70% 0.14 ${(195 + i * 36) % 360})` }));
+
+        let items;
+        if (this.vizMode === 'identity') {
+            items = [{ label: 'Original Code', color: 'oklch(68% 0.14 195)' }, { label: 'Refactored', color: 'oklch(72% 0.16 65)' }];
+        } else {
+            items = this.years.map((y, i) => ({ label: y, color: `oklch(70% 0.14 ${(195 + i * 36) % 360})` }));
+        }
+
+        // Trigger pill
+        const years = this.years;
+        const triggerText = this.vizMode === 'identity'
+            ? 'Original + Refactored · 2 layers'
+            : `${years[0]}–${years[years.length - 1]} · ${years.length} years`;
+
+        const trigger = document.createElement('button');
+        trigger.className = 'legend-trigger';
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.setAttribute('aria-label', `Legend: ${triggerText}. Hover or focus to expand.`);
+        trigger.innerHTML = `${triggerText}<span class="legend-trigger-icon"></span>`;
+        this.legend.appendChild(trigger);
+
+        // Panel
+        const panel = document.createElement('div');
+        panel.className = 'legend-panel';
+        panel.setAttribute('role', 'tooltip');
+        this.legend.appendChild(panel);
 
         items.forEach(item => {
-            const div = document.createElement('div');
-            div.className = 'legend-item';
-            div.style.cursor = 'pointer';
-            div.innerHTML = `
-                <span class="color-dot" style="background: ${item.color}; box-shadow: 0 0 10px ${item.color}44"></span>
-                <span>${item.label}</span>
-            `;
+            const el = document.createElement('div');
+            el.className = 'legend-item';
+            el.innerHTML = `<span class="color-dot" style="background: ${item.color}"></span><span>${item.label}</span>`;
 
-            div.onmouseenter = () => {
+            el.onmouseenter = () => {
                 const label = item.label;
-                const firstYear = this.years[0];
+                const firstYear = years[0];
 
-                d3.selectAll(".chart-area").style("opacity", 0.1);
+                d3.selectAll('.chart-area').style('opacity', 0.1);
 
                 if (this.vizMode === 'identity') {
                     if (label === 'Original Code') {
-                        d3.selectAll(`.chart-area[data-year='${firstYear}']`).style("opacity", 1);
+                        d3.selectAll(`.chart-area[data-year='${firstYear}']`).style('opacity', 1);
                     } else {
-                        // All years except the first one
-                        d3.selectAll(".chart-area")
-                            .filter(function () { return d3.select(this).attr("data-year") !== firstYear; })
-                            .style("opacity", 1);
+                        d3.selectAll('.chart-area')
+                            .filter(function () { return d3.select(this).attr('data-year') !== firstYear; })
+                            .style('opacity', 1);
                     }
                 } else {
-                    d3.selectAll(`.chart-area[data-year='${label}']`).style("opacity", 1);
+                    d3.selectAll(`.chart-area[data-year='${label}']`).style('opacity', 1);
                 }
             };
 
-            div.onmouseleave = () => {
-                d3.selectAll(".chart-area").style("opacity", 1);
+            el.onmouseleave = () => {
+                d3.selectAll('.chart-area').style('opacity', 1);
             };
 
-            this.legend.appendChild(div);
+            panel.appendChild(el);
+        });
+
+        // Toggle aria-expanded on hover
+        const toggleExpanded = (expanded) => {
+            trigger.setAttribute('aria-expanded', String(expanded));
+        };
+
+        this.legend.addEventListener('mouseenter', () => toggleExpanded(true));
+        this.legend.addEventListener('mouseleave', () => toggleExpanded(false));
+
+        this.legend.addEventListener('focusin', (e) => {
+            if (this.legend.contains(e.target)) toggleExpanded(true);
+        });
+        this.legend.addEventListener('focusout', (e) => {
+            if (!this.legend.contains(e.relatedTarget)) toggleExpanded(false);
         });
     }
 
