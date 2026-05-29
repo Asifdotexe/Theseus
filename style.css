@@ -13,6 +13,11 @@
     --error-text: oklch(70% 0.12 25);
     --font-serif: 'Playfair Display', Georgia, serif;
     --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace;
+    --text-xs: 0.65rem;
+    --text-sm: 0.85rem;
+    --text-xl: 1.5rem;
+    --weight-medium: 500;
+    --weight-semibold: 600;
     --space-xs: 0.5rem;
     --space-sm: 1rem;
     --space-md: 1.5rem;
@@ -573,7 +578,7 @@ svg#main-chart rect[tabindex="0"]:focus {
     align-items: center;
     gap: 0.4rem;
     padding: 0.35rem 0.85rem;
-    font-family: var(--font-sans);
+    font-family: var(--font-mono);
     font-size: var(--text-xs);
     color: var(--mist);
     background: var(--surface);
@@ -807,43 +812,6 @@ svg#main-chart rect[tabindex="0"]:focus {
     line-height: 1.4;
 }
 
-.info-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: var(--space-lg);
-}
-
-@media (min-width: 768px) {
-    .info-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
-.info-card {
-    padding: var(--space-md);
-    font-size: 0.9rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    transition: border-color var(--duration-short) var(--ease-out-quart);
-}
-
-.info-card:hover {
-    border-color: var(--border-hover);
-}
-
-.info-card .card-title {
-    font-size: 0.8rem;
-    margin-bottom: 0.75rem;
-}
-
-.card-text {
-    font-family: var(--font-mono);
-    line-height: 1.6;
-    color: var(--mist);
-    max-width: 75ch;
-}
-
 .footer {
     text-align: center;
     padding-top: var(--space-lg);
@@ -857,33 +825,46 @@ svg#main-chart rect[tabindex="0"]:focus {
 
 .personal-narrative {
     width: 100%;
-    margin: var(--space-xxl) 0 6rem;
-    padding: var(--space-xxl);
-    background: oklch(100% 0 0 / 0.02);
-    border-radius: var(--radius-xl);
+    margin: var(--space-xl) 0;
+    padding: var(--space-lg);
+    border-radius: var(--radius-lg);
     border: 1px solid var(--border);
     text-align: center;
 }
 
 .narrative-title {
     font-family: var(--font-serif);
-    font-size: clamp(1.5rem, 3vw, 2.2rem);
-    font-weight: 600;
-    margin-bottom: 2.5rem;
+    font-size: clamp(1.25rem, 2.5vw, 1.8rem);
+    font-weight: 500;
     color: var(--ice);
+    cursor: pointer;
+    user-select: none;
+}
+
+.narrative-title::-webkit-details-marker {
+    color: var(--mist);
+}
+
+.narrative-title::marker {
+    color: var(--mist);
+    font-size: 0.8em;
+}
+
+.narrative-title:hover {
+    opacity: 0.85;
 }
 
 .narrative-content {
     font-family: var(--font-serif);
-    font-size: 1.2rem;
-    font-weight: 500;
-    line-height: 1.8;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.6;
     color: var(--mist);
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
     max-width: 75ch;
-    margin: 0 auto;
+    margin: 1.5rem auto 0;
 }
 
 .narrative-content p {
@@ -1130,6 +1111,153 @@ svg#main-chart rect[tabindex="0"]:focus {
     line-height: 1.5;
 }
 
+.repo-request {
+    text-align: center;
+    padding: var(--space-lg);
+}
+
+.repo-request-title {
+    font-family: var(--font-serif);
+    font-size: 1.75rem;
+    font-weight: var(--weight-semibold);
+    color: var(--ice);
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+}
+
+.repo-request-icon {
+    font-size: var(--text-sm);
+    color: var(--mist);
+    opacity: 0.6;
+}
+
+.repo-request-desc {
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    font-weight: 400;
+    color: var(--mist);
+    margin-bottom: var(--space-md);
+}
+
+.repo-request-form {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+}
+
+.repo-request-field {
+    position: relative;
+}
+
+.repo-request-input {
+    padding: 0.6rem 1rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--ice);
+    background: oklch(0% 0 0 / 0.4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    width: 240px;
+    max-width: 100%;
+    outline: none;
+    transition: border-color var(--duration-instant) var(--ease-out-quart);
+}
+
+.repo-request-input::placeholder {
+    color: var(--mist);
+    opacity: 0.5;
+}
+
+.repo-request-input:focus {
+    border-color: var(--seafoam);
+}
+
+.repo-request-hint {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--mist);
+    opacity: 0.75;
+    margin-top: 0.25rem;
+    text-align: left;
+}
+
+.repo-request-submit {
+    padding: 0.6rem 1.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--abyss);
+    background: var(--seafoam);
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: opacity var(--duration-instant) var(--ease-out-quart),
+        transform var(--duration-instant) var(--ease-out-quart);
+    white-space: nowrap;
+}
+
+.repo-request-submit:focus-visible {
+    outline: 2px solid var(--seafoam);
+    outline-offset: 2px;
+}
+
+.repo-request-submit:hover {
+    opacity: 0.85;
+}
+
+.repo-request-submit:active {
+    transform: scale(0.97);
+}
+
+.repo-request-note {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--mist);
+    opacity: 0.6;
+    margin-top: var(--space-sm);
+}
+
+.repo-request-feedback {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    margin-top: var(--space-sm);
+    min-height: 1.5em;
+    transition: opacity var(--duration-instant) var(--ease-out-quart);
+}
+
+.repo-request-feedback.error {
+    color: var(--ember);
+}
+
+.repo-request-feedback.success {
+    color: var(--seafoam);
+}
+
+.repo-request-input.invalid {
+    border-color: var(--ember);
+}
+
+@media (max-width: 480px) {
+    .repo-request-input {
+        width: 100%;
+    }
+
+    .repo-request-form {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .repo-request-submit {
+        width: 100%;
+    }
+}
+
 @media (pointer: coarse) {
     .repo-btn,
     .mode-btn,
@@ -1137,7 +1265,9 @@ svg#main-chart rect[tabindex="0"]:focus {
         min-height: 44px;
     }
 
-    .fossil-card {
+    .fossil-card,
+    .repo-request-input,
+    .repo-request-submit {
         min-height: 44px;
     }
 

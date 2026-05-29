@@ -54,6 +54,7 @@ class TheseusVisualizer {
 
         window.addEventListener('resize', () => this.debouncedRender());
         this.setupKeyboardShortcuts();
+        this.setupRepoRequest();
     }
 
     setupModeToggle() {
@@ -115,6 +116,67 @@ class TheseusVisualizer {
                 }
                 return;
             }
+        });
+    }
+
+    setupRepoRequest() {
+        const form = document.getElementById('repo-request-form');
+        const input = document.getElementById('repo-url');
+        const feedback = document.getElementById('repo-request-feedback');
+        if (!form || !input || !feedback) return;
+
+        function setFeedback(message, type) {
+            feedback.textContent = message;
+            feedback.className = 'repo-request-feedback' + (type ? ' ' + type : '');
+        }
+
+        function validateUrl(raw) {
+            const cleaned = raw
+                .replace(/^https?:\/\//, '')
+                .replace(/^www\./, '')
+                .replace(/\/$/, '')
+                .replace(/^github\.com\//, '');
+            return /^[\w.-]+\/[\w.-]+$/.test(cleaned) ? cleaned : null;
+        }
+
+        input.addEventListener('input', () => {
+            input.classList.remove('invalid');
+            if (feedback.textContent) setFeedback('');
+        });
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const raw = input.value.trim();
+            if (!raw) return;
+
+            const slug = validateUrl(raw);
+            if (!slug) {
+                input.classList.add('invalid');
+                setFeedback('Enter a valid GitHub URL (e.g. owner/repo)', 'error');
+                return;
+            }
+
+            const title = `Repository request: ${slug}`;
+            const body = [
+                `**Repository:** ${raw}`,
+                '',
+                '---',
+                'Submitted via the Ship of Theseus dashboard.',
+            ].join('\n');
+
+            const url = new URL('https://github.com/Asifdotexe/Theseus/issues/new');
+            url.searchParams.set('title', title);
+            url.searchParams.set('body', body);
+            url.searchParams.set('labels', 'repository request');
+
+            const popup = window.open(url.toString(), '_blank');
+            if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+                setFeedback('Popup was blocked. Allow popups for this site and try again.', 'error');
+                return;
+            }
+
+            setFeedback('Request submitted. I will look into it soon.', 'success');
+            input.value = '';
         });
     }
 
