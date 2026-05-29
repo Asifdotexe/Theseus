@@ -24,7 +24,10 @@ class TheseusVisualizer {
         this.vizMode = 'chronological'; // 'chronological' | 'identity'
         this.yScaleMode = 'linear'; // 'linear' | 'log'
         this.fossils = {};
+        this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        this.animDuration = this.reducedMotion ? 0 : 800;
 
+        this.focusIndex = undefined;
         this.init();
     }
 
@@ -50,6 +53,8 @@ class TheseusVisualizer {
         }
 
         window.addEventListener('resize', () => this.debouncedRender());
+        this.setupKeyboardShortcuts();
+        this.setupRepoRequest();
     }
 
     setupModeToggle() {
@@ -75,6 +80,108 @@ class TheseusVisualizer {
 
             this.yScaleMode = btn.dataset.scale;
             if (this.currentData) this.renderChart();
+        });
+    }
+
+    setupKeyboardShortcuts() {
+        document.addEventListener('keydown', (e) => {
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+            const key = e.key;
+
+            if (key >= '1' && key <= '9') {
+                const idx = parseInt(key, 10) - 1;
+                const btns = document.querySelectorAll('.repo-btn');
+                if (idx < btns.length) {
+                    btns[idx].click();
+                }
+                return;
+            }
+
+            if (key === 'm' || key === 'M') {
+                const active = document.querySelector('.mode-btn.active');
+                if (active) {
+                    const next = active.nextElementSibling || active.previousElementSibling;
+                    if (next) next.click();
+                }
+                return;
+            }
+
+            if (key === 's' || key === 'S') {
+                const active = document.querySelector('.scale-btn.active');
+                if (active) {
+                    const next = active.nextElementSibling || active.previousElementSibling;
+                    if (next) next.click();
+                }
+                return;
+            }
+        });
+    }
+
+    setupRepoRequest() {
+        const form = document.getElementById('repo-request-form');
+        const input = document.getElementById('repo-url');
+        const feedback = document.getElementById('repo-request-feedback');
+        if (!form || !input || !feedback) return;
+
+        function setFeedback(message, type) {
+            feedback.textContent = message;
+            feedback.className = 'repo-request-feedback' + (type ? ' ' + type : '');
+            feedback.classList.toggle('visible', !!message);
+        }
+
+        function validateUrl(raw) {
+            const cleaned = raw
+                .replace(/^https?:\/\//, '')
+                .replace(/^www\./, '')
+                .replace(/\/$/, '')
+                .replace(/^github\.com\//, '');
+            return /^[\w.-]+\/[\w.-]+$/.test(cleaned) ? cleaned : null;
+        }
+
+        input.addEventListener('input', () => {
+            input.classList.remove('invalid');
+            if (feedback.textContent) setFeedback('');
+        });
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const raw = input.value.trim();
+            if (!raw) {
+                input.classList.add('invalid');
+                setFeedback('Enter a repository URL or owner/repo name.', 'error');
+                return;
+            }
+
+            const slug = validateUrl(raw);
+            if (!slug) {
+                input.classList.add('invalid');
+                setFeedback('Enter a valid GitHub URL (e.g. owner/repo)', 'error');
+                return;
+            }
+
+            const title = `Repository request: ${slug}`;
+            const body = [
+                `**Repository:** ${raw}`,
+                '',
+                '---',
+                'Submitted via the Ship of Theseus dashboard.',
+            ].join('\n');
+
+            const url = new URL('https://github.com/Asifdotexe/Theseus/issues/new');
+            url.searchParams.set('title', title);
+            url.searchParams.set('body', body);
+            url.searchParams.set('labels', 'repository request');
+
+            const popup = window.open(url.toString(), '_blank');
+            if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+                setFeedback('Popup was blocked. Allow popups for this site and try again.', 'error');
+                return;
+            }
+
+            setFeedback('Request submitted. I will look into it soon.', 'success');
+            input.value = '';
         });
     }
 
@@ -167,16 +274,34 @@ class TheseusVisualizer {
         const chartHeight = height - this.margin.top - this.margin.bottom;
 
         const svg = d3.select(this.canvas);
-        svg.selectAll("*").remove();
+        const needsBuild = !this._built;
+        const dimsChanged = this._chartWidth !== chartWidth || this._chartHeight !== chartHeight;
 
-        // Containers
-        const g = svg.append("g")
-            .attr("transform", `translate(${this.margin.left},${this.margin.top})`);
+        this.focusIndex = undefined;
 
-        // Scales
+        // — Structural phase (first time, resize, or repo switch) —
+        if (needsBuild || dimsChanged) {
+            svg.selectAll("*").remove();
+            svg.append("defs");
+            this._g = svg.append("g")
+                .attr("class", "chart-container")
+                .attr("transform", `translate(${this.margin.left},${this.margin.top})`);
+            this._chartWidth = chartWidth;
+            this._chartHeight = chartHeight;
+            this._built = true;
+        }
+
+        const g = this._g;
+
+        // — Clear data-driven children (keep g itself, defs, and their attributes) —
+        g.selectAll("g.axis-y, g.axis-x, .milestone-marker, path.layer, .scrubber-line, rect[fill='transparent'], text.axis-label").remove();
+        svg.select("defs").selectAll("linearGradient").remove();
+
+        // — Scales —
         const xScale = d3.scaleTime()
             .domain(d3.extent(this.points, d => d.date))
             .range([0, chartWidth]);
+        this.xScale = xScale;
 
         const maxTotal = d3.max(this.points, d => d.total);
         let yScale;
@@ -191,34 +316,29 @@ class TheseusVisualizer {
                 .range([chartHeight, 0]);
         }
 
-        // Color Logic & Gradients
-        const defs = svg.append("defs");
-
+        // — Gradients —
+        const defs = svg.select("defs");
         const getBaseColor = (seriesName, seriesIndex) => {
             if (this.vizMode === 'identity') {
-                return (seriesIndex === 0) ? '#3bc7c7' : '#f0a33b';
+                return (seriesIndex === 0) ? 'oklch(68% 0.14 195)' : 'oklch(72% 0.16 65)';
             }
             const yearIdx = this.years.indexOf(seriesName);
-            return `hsl(${(180 + yearIdx * 40) % 360}, 85%, 70%)`;
+            return `oklch(70% 0.14 ${(195 + yearIdx * 36) % 360})`;
         };
 
-        // Create gradients for each series
-        const seriesKeys = this.vizMode === 'identity' ? [this.years[0], 'refactored'] : this.years;
         this.years.forEach((year, i) => {
             const color = getBaseColor(year, i);
             const grad = defs.append("linearGradient")
                 .attr("id", `grad-${year}`)
                 .attr("x1", "0%").attr("y1", "0%")
                 .attr("x2", "0%").attr("y2", "100%");
-
             grad.append("stop").attr("offset", "0%").attr("stop-color", color).attr("stop-opacity", 0.9);
             grad.append("stop").attr("offset", "100%").attr("stop-color", color).attr("stop-opacity", 0.4);
         });
 
-        // Specialized gradients for Identity mode if needed
         if (this.vizMode === 'identity') {
             ['original', 'refactored'].forEach(id => {
-                const color = id === 'original' ? '#3bc7c7' : '#f0a33b';
+                const color = id === 'original' ? 'oklch(68% 0.14 195)' : 'oklch(72% 0.16 65)';
                 const grad = defs.append("linearGradient")
                     .attr("id", `grad-id-${id}`)
                     .attr("x1", "0%").attr("y1", "0%")
@@ -228,7 +348,7 @@ class TheseusVisualizer {
             });
         }
 
-        // Stack & Area
+        // — Stack & Area (data join) —
         const stackGenerator = d3.stack()
             .keys(this.years);
 
@@ -240,7 +360,6 @@ class TheseusVisualizer {
             .y1(d => yScale(this.yScaleMode === 'log' ? Math.max(1, d[1]) : d[1]))
             .curve(d3.curveMonotoneX);
 
-        // Render Layers (Data Join)
         const layers = g.selectAll(".layer")
             .data(stackedData, d => d.key);
 
@@ -259,21 +378,22 @@ class TheseusVisualizer {
             .attr("d", areaGenerator)
             .style("opacity", 0)
             .transition()
-            .duration(800)
+            .duration(this.animDuration)
+            .delay((d, i) => this.reducedMotion ? 0 : i * 50)
             .style("opacity", 1);
 
         layers.transition()
-            .duration(800)
+            .duration(this.animDuration)
             .attr("d", areaGenerator)
             .attr("fill", getFill);
 
         layers.exit().remove();
 
-        // Interaction Components (Legend, Axes, Scrubber)
-        this.renderLegend();
+        // — Axes, Milestones, Interaction, Legend —
         this.renderAxes(g, chartWidth, chartHeight, xScale, yScale);
         this.renderMilestoneMarkers(g, chartWidth, chartHeight, xScale);
         this.setupInteractivity(g, chartWidth, chartHeight, xScale, yScale);
+        this.renderLegend();
     }
 
     renderMilestoneMarkers(g, chartWidth, chartHeight, xScale) {
@@ -290,6 +410,9 @@ class TheseusVisualizer {
                 const marker = g.append('g')
                     .attr('class', 'milestone-marker')
                     .attr('transform', `translate(${xPos}, 0)`)
+                    .attr('tabindex', '0')
+                    .attr('role', 'button')
+                    .attr('aria-label', `${m.title}: ${m.description}`)
                     .style('cursor', 'pointer');
 
                 marker.append('text')
@@ -297,73 +420,113 @@ class TheseusVisualizer {
                     .attr('y', 18)
                     .attr('text-anchor', 'middle')
                     .attr('font-size', '14px')
-                    .attr('fill', '#3bc7c7')
+                    .attr('fill', 'oklch(68% 0.14 195)')
                     .text('★')
                     .style('opacity', 0.8)
-                    .style('filter', 'drop-shadow(0 0 4px rgba(59, 199, 199, 0.6))');
+                    .style('filter', 'drop-shadow(0 0 4px oklch(68% 0.14 195 / 0.6))');
 
                 marker.append('title')
                     .text(m.title + ': ' + m.description);
 
-                marker.on('mouseenter', function () {
+                const animDur = this.reducedMotion ? 0 : 200;
+
+                const enlarge = function () {
                     d3.select(this).select('text')
                         .transition()
-                        .duration(200)
+                        .duration(animDur)
                         .attr('font-size', '18px')
                         .style('opacity', 1);
-                });
+                };
 
-                marker.on('mouseleave', function () {
+                const shrink = function () {
                     d3.select(this).select('text')
                         .transition()
-                        .duration(200)
+                        .duration(animDur)
                         .attr('font-size', '14px')
                         .style('opacity', 0.8);
-                });
+                };
+
+                marker.on('mouseenter', enlarge)
+                    .on('mouseleave', shrink)
+                    .on('focus', enlarge)
+                    .on('blur', shrink);
             }
         });
     }
 
     renderLegend() {
         this.legend.innerHTML = '';
-        const items = this.vizMode === 'identity'
-            ? [{ label: 'Original Code', color: '#3bc7c7' }, { label: 'Refactored', color: '#f0a33b' }]
-            : this.years.map((y, i) => ({ label: y, color: `hsl(${(180 + i * 40) % 360}, 85%, 70%)` }));
+
+        let items;
+        if (this.vizMode === 'identity') {
+            items = [{ label: 'Original Code', color: 'oklch(68% 0.14 195)' }, { label: 'Refactored', color: 'oklch(72% 0.16 65)' }];
+        } else {
+            items = this.years.map((y, i) => ({ label: y, color: `oklch(70% 0.14 ${(195 + i * 36) % 360})` }));
+        }
+
+        // Trigger pill
+        const years = this.years;
+        const triggerText = this.vizMode === 'identity'
+            ? 'Original + Refactored · 2 layers'
+            : `${years[0]}–${years[years.length - 1]} · ${years.length} years`;
+
+        const trigger = document.createElement('button');
+        trigger.className = 'legend-trigger';
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.setAttribute('aria-label', `Legend: ${triggerText}. Hover or focus to expand.`);
+        trigger.innerHTML = `${triggerText}<span class="legend-trigger-icon"></span>`;
+        this.legend.appendChild(trigger);
+
+        // Panel
+        const panel = document.createElement('div');
+        panel.className = 'legend-panel';
+        panel.setAttribute('role', 'tooltip');
+        this.legend.appendChild(panel);
 
         items.forEach(item => {
-            const div = document.createElement('div');
-            div.className = 'legend-item';
-            div.style.cursor = 'pointer';
-            div.innerHTML = `
-                <span class="color-dot" style="background: ${item.color}; box-shadow: 0 0 10px ${item.color}44"></span>
-                <span>${item.label}</span>
-            `;
+            const el = document.createElement('div');
+            el.className = 'legend-item';
+            el.innerHTML = `<span class="color-dot" style="background: ${item.color}"></span><span>${item.label}</span>`;
 
-            div.onmouseenter = () => {
+            el.onmouseenter = () => {
                 const label = item.label;
-                const firstYear = this.years[0];
+                const firstYear = years[0];
 
-                d3.selectAll(".chart-area").style("opacity", 0.1);
+                d3.selectAll('.chart-area').style('opacity', 0.1);
 
                 if (this.vizMode === 'identity') {
                     if (label === 'Original Code') {
-                        d3.selectAll(`.chart-area[data-year='${firstYear}']`).style("opacity", 1);
+                        d3.selectAll(`.chart-area[data-year='${firstYear}']`).style('opacity', 1);
                     } else {
-                        // All years except the first one
-                        d3.selectAll(".chart-area")
-                            .filter(function () { return d3.select(this).attr("data-year") !== firstYear; })
-                            .style("opacity", 1);
+                        d3.selectAll('.chart-area')
+                            .filter(function () { return d3.select(this).attr('data-year') !== firstYear; })
+                            .style('opacity', 1);
                     }
                 } else {
-                    d3.selectAll(`.chart-area[data-year='${label}']`).style("opacity", 1);
+                    d3.selectAll(`.chart-area[data-year='${label}']`).style('opacity', 1);
                 }
             };
 
-            div.onmouseleave = () => {
-                d3.selectAll(".chart-area").style("opacity", 1);
+            el.onmouseleave = () => {
+                d3.selectAll('.chart-area').style('opacity', 1);
             };
 
-            this.legend.appendChild(div);
+            panel.appendChild(el);
+        });
+
+        // Toggle aria-expanded on hover
+        const toggleExpanded = (expanded) => {
+            trigger.setAttribute('aria-expanded', String(expanded));
+        };
+
+        this.legend.addEventListener('mouseenter', () => toggleExpanded(true));
+        this.legend.addEventListener('mouseleave', () => toggleExpanded(false));
+
+        this.legend.addEventListener('focusin', (e) => {
+            if (this.legend.contains(e.target)) toggleExpanded(true);
+        });
+        this.legend.addEventListener('focusout', (e) => {
+            if (!this.legend.contains(e.relatedTarget)) toggleExpanded(false);
         });
     }
 
@@ -383,13 +546,13 @@ class TheseusVisualizer {
             .call(yAxis);
 
         yGroup.selectAll(".tick line")
-            .attr("stroke", "#374151")
+            .attr("stroke", "oklch(30% 0.01 260)")
             .attr("stroke-dasharray", "3,3")
             .attr("stroke-opacity", 0.5);
 
         yGroup.selectAll("text")
             .attr("x", -10)
-            .attr("fill", "#6b7280")
+            .attr("fill", "oklch(55% 0.015 255)")
             .attr("font-size", "10px")
             .attr("font-family", "inherit");
 
@@ -407,20 +570,20 @@ class TheseusVisualizer {
 
         xGroup.selectAll("text")
             .attr("y", 15)
-            .attr("fill", "#8b949e")
+            .attr("fill", "oklch(55% 0.015 255)")
             .attr("font-size", "11px")
             .attr("letter-spacing", "0.05em")
             .attr("font-family", "inherit");
 
-        xGroup.select(".domain").attr("stroke", "rgba(255, 255, 255, 0.1)");
-        xGroup.selectAll(".tick line").attr("stroke", "rgba(255, 255, 255, 0.1)");
+        xGroup.select(".domain").attr("stroke", "oklch(100% 0 0 / 0.1)");
+        xGroup.selectAll(".tick line").attr("stroke", "oklch(100% 0 0 / 0.1)");
 
         // Axis Labels
         g.append("text")
             .attr("class", "axis-label")
             .attr("x", width / 2)
             .attr("y", height + 40)
-            .attr("fill", "#6b7280")
+            .attr("fill", "oklch(55% 0.015 255)")
             .attr("font-size", "12px")
             .attr("text-anchor", "middle")
             .text("Time");
@@ -430,7 +593,7 @@ class TheseusVisualizer {
             .attr("transform", "rotate(-90)")
             .attr("x", -height / 2)
             .attr("y", -45)
-            .attr("fill", "#6b7280")
+            .attr("fill", "oklch(55% 0.015 255)")
             .attr("font-size", "12px")
             .attr("text-anchor", "middle")
             .text("Lines of Code");
@@ -441,21 +604,25 @@ class TheseusVisualizer {
             .attr("class", "scrubber-line hidden")
             .attr("y1", 0)
             .attr("y2", height)
-            .attr("stroke", "rgba(255,255,255,0.2)")
+            .attr("stroke", "oklch(100% 0 0 / 0.2)")
             .attr("stroke-width", 1);
-
         const bisect = d3.bisector(d => d.date).left;
+
+        const self = this;
 
         g.append("rect")
             .attr("width", width)
             .attr("height", height)
             .attr("fill", "transparent")
-            .on("mousemove", (event) => {
+            .attr("tabindex", "0")
+            .attr("role", "img")
+            .attr("aria-label", "Chart of code composition by year. Use Arrow Left and Arrow Right to navigate data points.")
+            .on("mousemove", function (event) {
                 const mouseX = d3.pointer(event)[0];
                 const date = xScale.invert(mouseX);
-                const idx = bisect(this.points, date, 1);
-                const d0 = this.points[idx - 1];
-                const d1 = this.points[idx];
+                const idx = bisect(self.points, date, 1);
+                const d0 = self.points[idx - 1];
+                const d1 = self.points[idx];
 
                 // Handle single-point or edge cases
                 if (!d0 && !d1) return;
@@ -467,17 +634,47 @@ class TheseusVisualizer {
                 const snappedX = xScale(d.date);
                 scrubber.attr("x1", snappedX).attr("x2", snappedX).classed("hidden", false);
 
-                const svgRect = this.canvas.getBoundingClientRect();
-                this.showTooltip(d, snappedX + this.margin.left, d3.pointer(event)[1] + this.margin.top);
+                const svgRect = self.canvas.getBoundingClientRect();
+                self.showTooltip(d, snappedX + self.margin.left, d3.pointer(event)[1] + self.margin.top);
             })
             .on("mouseleave", () => {
-                this.hideTooltip();
+                self.hideTooltip();
                 scrubber.classed("hidden", true);
+            })
+            .on("focus", () => {
+                if (self.focusIndex === undefined || self.focusIndex >= self.points.length) {
+                    self.focusIndex = self.points.length - 1;
+                }
+                self.updateFocusPoint(xScale, scrubber);
+            })
+            .on("blur", () => {
+                self.hideTooltip();
+                scrubber.classed("hidden", true);
+            })
+            .on("keydown", (event) => {
+                if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                    event.preventDefault();
+                    const len = self.points.length;
+                    if (len === 0) return;
+
+                    if (self.focusIndex === undefined) {
+                        self.focusIndex = len - 1;
+                    }
+
+                    if (event.key === "ArrowLeft") {
+                        self.focusIndex = Math.max(0, self.focusIndex - 1);
+                    } else {
+                        self.focusIndex = Math.min(len - 1, self.focusIndex + 1);
+                    }
+
+                    self.updateFocusPoint(xScale, scrubber);
+                }
             });
     }
 
     showTooltip(point, x, y) {
         this.tooltip.classList.remove('hidden');
+        this.tooltip.setAttribute('role', 'tooltip');
 
         const dateStr = point.date instanceof Date
             ? point.date.toISOString().split('T')[0]
@@ -526,7 +723,7 @@ class TheseusVisualizer {
             <div class="tooltip-divider"></div>
             <div class="tooltip-item">
                 <div class="label-group">
-                    <span class="color-dot" style="background: #3bc7c7"></span>
+                    <span class="color-dot" style="background: oklch(68% 0.14 195)"></span>
                     <span>Foundation (${foundationYear})</span>
                 </div>
                 <div class="value-group">
@@ -536,7 +733,7 @@ class TheseusVisualizer {
             </div>
             <div class="tooltip-item">
                 <div class="label-group">
-                    <span class="color-dot" style="background: #f0a33b"></span>
+                    <span class="color-dot" style="background: oklch(72% 0.16 65)"></span>
                     <span>Refactored</span>
                 </div>
                 <div class="value-group">
@@ -547,7 +744,7 @@ class TheseusVisualizer {
             ${!isFoundationAlive && oldestSurvivingYear && oldestSurvivingYear !== foundationYear ? `
             <div class="tooltip-item">
                 <div class="label-group">
-                    <span class="color-dot" style="background: #8b5cf6"></span>
+                    <span class="color-dot" style="background: oklch(52% 0.22 285)"></span>
                     <span>Oldest surviving (${oldestSurvivingYear})</span>
                 </div>
                 <div class="value-group">
@@ -580,6 +777,16 @@ class TheseusVisualizer {
 
     hideTooltip() {
         this.tooltip.classList.add('hidden');
+    }
+
+    updateFocusPoint(xScale, scrubber) {
+        const d = this.points[this.focusIndex];
+        if (!d) return;
+
+        const snappedX = xScale(d.date);
+        scrubber.attr("x1", snappedX).attr("x2", snappedX).classed("hidden", false);
+
+        this.showTooltip(d, snappedX + this.margin.left, this.tooltip.offsetHeight + 20);
     }
 
     updateInsights() {
@@ -619,7 +826,7 @@ class TheseusVisualizer {
             let totalAge = 0;
             this.years.forEach(y => {
                 const lines = last[y] || 0;
-                const age = currentYear - parseInt(y);
+                const age = currentYear - parseInt(y, 10);
                 totalAge += lines * age;
             });
             const meanAge = totalAge / totalLines;
@@ -632,7 +839,7 @@ class TheseusVisualizer {
         let peakYear = '--';
         let peakVal = 0;
         this.years.forEach(y => {
-            if (parseInt(y) < currentYear) {
+            if (parseInt(y, 10) < currentYear) {
                 const val = last[y] || 0;
                 if (val > peakVal) {
                     peakVal = val;
@@ -704,6 +911,31 @@ class TheseusVisualizer {
         document.getElementById('survivor-content').textContent = survivor.content ? survivor.content.trim() : 'No fossil data';
         document.getElementById('survivor-commit').textContent = survivor.view_commit || survivor.commit || '';
 
+        // Keyboard interaction for fossil card divs
+        ['fossil-genesis', 'fossil-survivor'].forEach(id => {
+            const card = document.getElementById(id);
+            if (!card || card.dataset.fossilInited) return;
+            card.dataset.fossilInited = 'true';
+            card.setAttribute('tabindex', '0');
+            card.setAttribute('role', 'link');
+
+            const openLink = () => {
+                const link = card.querySelector('.fossil-link');
+                if (link && link.href) window.open(link.href, '_blank');
+            };
+
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.fossil-link')) return;
+                openLink();
+            });
+
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openLink();
+                }
+            });
+        });
     }
 
     createSVGElement(tag, attrs = {}) {
