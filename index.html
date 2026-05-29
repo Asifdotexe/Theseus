@@ -98,16 +98,16 @@
                 </div>
             </div>
 
-            <div id="chart-error" class="error-banner hidden"></div>
+            <div id="chart-error" class="error-banner hidden" role="alert"></div>
 
             <div id="chart-container" class="chart-wrapper">
                 <div id="chart-legend" class="chart-legend"></div>
-                <svg id="main-chart" preserveAspectRatio="none"></svg>
+                <svg id="main-chart" preserveAspectRatio="none" role="img" aria-label="Lines of code over time, stacked area chart showing code composition by year of origin"></svg>
                 <div id="tooltip" class="custom-tooltip hidden"></div>
             </div>
         </section>
 
-        <section class="insights-grid">
+        <section class="insights-grid" aria-live="polite" aria-atomic="true">
             <h2 class="visually-hidden">Insights</h2>
             <div class="insight-card glass-panel" id="card-evolution">
                 <h3 class="card-title">

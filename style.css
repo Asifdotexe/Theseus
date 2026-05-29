@@ -433,6 +433,11 @@ svg#main-chart {
     min-height: 550px;
 }
 
+svg#main-chart rect[tabindex="0"]:focus {
+    outline: 2px solid var(--seafoam);
+    outline-offset: -2px;
+}
+
 .custom-tooltip {
     position: absolute;
     pointer-events: none;
@@ -545,7 +550,6 @@ svg#main-chart {
 .percent-tag {
     font-size: 0.75rem;
     color: var(--mist);
-    opacity: 0.7;
     font-family: var(--font-mono);
 }
 
@@ -854,7 +858,6 @@ svg#main-chart {
     text-align: center;
     font-size: 0.8rem;
     color: var(--mist);
-    opacity: 0.6;
     margin-bottom: 2.5rem;
     font-style: italic;
 }
@@ -960,7 +963,6 @@ svg#main-chart {
     font-size: 0.8rem;
     color: var(--mist);
     margin-bottom: 1.25rem;
-    opacity: 0.6;
     display: flex;
     gap: 0.75rem;
     align-items: center;
@@ -1024,7 +1026,6 @@ svg#main-chart {
     font-size: 0.75rem;
     font-style: italic;
     color: var(--mist);
-    opacity: 0.5;
     margin-top: 1.25rem;
     line-height: 1.5;
 }

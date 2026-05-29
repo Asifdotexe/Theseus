@@ -27,6 +27,7 @@ class TheseusVisualizer {
         this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         this.animDuration = this.reducedMotion ? 0 : 800;
 
+        this.focusIndex = undefined;
         this.init();
     }
 
@@ -171,6 +172,8 @@ class TheseusVisualizer {
         const svg = d3.select(this.canvas);
         svg.selectAll("*").remove();
 
+        this.focusIndex = undefined;
+
         // Containers
         const g = svg.append("g")
             .attr("transform", `translate(${this.margin.left},${this.margin.top})`);
@@ -179,6 +182,7 @@ class TheseusVisualizer {
         const xScale = d3.scaleTime()
             .domain(d3.extent(this.points, d => d.date))
             .range([0, chartWidth]);
+        this.xScale = xScale;
 
         const maxTotal = d3.max(this.points, d => d.total);
         let yScale;
@@ -394,7 +398,7 @@ class TheseusVisualizer {
 
         yGroup.selectAll("text")
             .attr("x", -10)
-            .attr("fill", "oklch(45% 0.015 255)")
+            .attr("fill", "oklch(55% 0.015 255)")
             .attr("font-size", "10px")
             .attr("font-family", "inherit");
 
@@ -425,7 +429,7 @@ class TheseusVisualizer {
             .attr("class", "axis-label")
             .attr("x", width / 2)
             .attr("y", height + 40)
-            .attr("fill", "oklch(45% 0.015 255)")
+            .attr("fill", "oklch(55% 0.015 255)")
             .attr("font-size", "12px")
             .attr("text-anchor", "middle")
             .text("Time");
@@ -435,7 +439,7 @@ class TheseusVisualizer {
             .attr("transform", "rotate(-90)")
             .attr("x", -height / 2)
             .attr("y", -45)
-            .attr("fill", "oklch(45% 0.015 255)")
+            .attr("fill", "oklch(55% 0.015 255)")
             .attr("font-size", "12px")
             .attr("text-anchor", "middle")
             .text("Lines of Code");
@@ -448,19 +452,23 @@ class TheseusVisualizer {
             .attr("y2", height)
             .attr("stroke", "oklch(100% 0 0 / 0.2)")
             .attr("stroke-width", 1);
-
         const bisect = d3.bisector(d => d.date).left;
+
+        const self = this;
 
         g.append("rect")
             .attr("width", width)
             .attr("height", height)
             .attr("fill", "transparent")
-            .on("mousemove", (event) => {
+            .attr("tabindex", "0")
+            .attr("role", "img")
+            .attr("aria-label", "Chart of code composition by year. Use Arrow Left and Arrow Right to navigate data points.")
+            .on("mousemove", function (event) {
                 const mouseX = d3.pointer(event)[0];
                 const date = xScale.invert(mouseX);
-                const idx = bisect(this.points, date, 1);
-                const d0 = this.points[idx - 1];
-                const d1 = this.points[idx];
+                const idx = bisect(self.points, date, 1);
+                const d0 = self.points[idx - 1];
+                const d1 = self.points[idx];
 
                 // Handle single-point or edge cases
                 if (!d0 && !d1) return;
@@ -472,17 +480,47 @@ class TheseusVisualizer {
                 const snappedX = xScale(d.date);
                 scrubber.attr("x1", snappedX).attr("x2", snappedX).classed("hidden", false);
 
-                const svgRect = this.canvas.getBoundingClientRect();
-                this.showTooltip(d, snappedX + this.margin.left, d3.pointer(event)[1] + this.margin.top);
+                const svgRect = self.canvas.getBoundingClientRect();
+                self.showTooltip(d, snappedX + self.margin.left, d3.pointer(event)[1] + self.margin.top);
             })
             .on("mouseleave", () => {
-                this.hideTooltip();
+                self.hideTooltip();
                 scrubber.classed("hidden", true);
+            })
+            .on("focus", () => {
+                if (self.focusIndex === undefined || self.focusIndex >= self.points.length) {
+                    self.focusIndex = self.points.length - 1;
+                }
+                self.updateFocusPoint(xScale, scrubber);
+            })
+            .on("blur", () => {
+                self.hideTooltip();
+                scrubber.classed("hidden", true);
+            })
+            .on("keydown", (event) => {
+                if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                    event.preventDefault();
+                    const len = self.points.length;
+                    if (len === 0) return;
+
+                    if (self.focusIndex === undefined) {
+                        self.focusIndex = len - 1;
+                    }
+
+                    if (event.key === "ArrowLeft") {
+                        self.focusIndex = Math.max(0, self.focusIndex - 1);
+                    } else {
+                        self.focusIndex = Math.min(len - 1, self.focusIndex + 1);
+                    }
+
+                    self.updateFocusPoint(xScale, scrubber);
+                }
             });
     }
 
     showTooltip(point, x, y) {
         this.tooltip.classList.remove('hidden');
+        this.tooltip.setAttribute('role', 'tooltip');
 
         const dateStr = point.date instanceof Date
             ? point.date.toISOString().split('T')[0]
@@ -585,6 +623,16 @@ class TheseusVisualizer {
 
     hideTooltip() {
         this.tooltip.classList.add('hidden');
+    }
+
+    updateFocusPoint(xScale, scrubber) {
+        const d = this.points[this.focusIndex];
+        if (!d) return;
+
+        const snappedX = xScale(d.date);
+        scrubber.attr("x1", snappedX).attr("x2", snappedX).classed("hidden", false);
+
+        this.showTooltip(d, snappedX + this.margin.left, this.tooltip.offsetHeight + 20);
     }
 
     updateInsights() {
