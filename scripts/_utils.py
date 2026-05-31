@@ -89,7 +89,7 @@ def get_default_branch(repo_path: str | None = None) -> str:
         try:
             result = run_command(strategy, cwd=repo_path)
             branch = (
-                result[len("origin/"):] if result.startswith("origin/") else result
+                result[len("origin/") :] if result.startswith("origin/") else result
             )
             if branch:
                 return branch
@@ -107,6 +107,22 @@ def get_default_branch(repo_path: str | None = None) -> str:
             continue
 
     return "HEAD"
+
+
+def get_tracked_files(repo_path: str | None = None) -> list[str]:
+    """
+    Return a list of files that are tracked by git and exist on disk.
+
+    :param repo_path: Path to the git repository (or ``None`` for CWD).
+    :return: List of relative file paths.
+    """
+    files_output = run_command(["git", "ls-files"], cwd=repo_path)
+    resolved = str(repo_path) if repo_path else os.getcwd()
+    return [
+        f
+        for f in files_output.splitlines()
+        if os.path.isfile(os.path.join(resolved, f))
+    ]
 
 
 def remove_path(path: str) -> None:
@@ -166,6 +182,6 @@ def remove_path(path: str) -> None:
             break
         except Exception:  # noqa: BLE001
             if attempt < 2:
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
             else:
                 logger.warning("Failed to clean up %s after 3 attempts", path)

@@ -16,6 +16,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
       - name: Setup python 3.12
         uses: actions/setup-python@v5
@@ -23,28 +24,20 @@ jobs:
           python-version: "3.12"
 
       - name: Install poetry
-        uses: snok/install-poetry@v1
-        with:
-          virtualenvs-create: true
-          virtualenvs-in-project: true
+        run: pipx install poetry
 
       - name: Install dependencies
         run: poetry install --no-interaction --no-root
 
-      - name: Run theseus multi-repo analysis (delta load)
-        run: poetry run python scripts/analyse_repository.py
-
-      - name: Update living fossils (survivor check)
+      - name: Run theseus data pipeline (snapshots → survivor → cleanup)
         run: |
-          # Re-blame HEAD for every repo and update the survivor fossil only if
-          # the file:line:commit has actually changed since the last run.
-          # Genesis (historical fossil) is left completely untouched.
-          poetry run python scripts/add_fossils.py --update-survivor
-
-      - name: Clean & minify data payloads
-        run: poetry run python scripts/cleanup_data.py
+          # Analyse new snapshot periods, refresh survivor fossils, and clean/minify
+          # all data payloads.  Genesis (historical fossil) is left untouched
+          # during monthly cron runs.
+          poetry run python scripts/run_pipeline.py --update-survivor
 
       - name: Create pull request for data updates
+        if: success()
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -55,9 +48,9 @@ jobs:
           title: "chore: monthly theseus data pipeline update"
           body: |
             ## Automated Theseus Data Engine Run
-            
+
             This pull request contains the latest pre-computed persistence data, minified payloads, and fossil updates for the tracked repositories.
-            
+
             **Trigger:** Monthly Schedule / Workflow Dispatch
             **Action:** Deltas calculated and fossils verified.
           labels: "automated pr, data update"

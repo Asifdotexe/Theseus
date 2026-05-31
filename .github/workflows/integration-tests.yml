@@ -1,4 +1,4 @@
-name: Integration Tests
+name: Unit Tests
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    name: Run Integration Tests
+    name: Run Unit Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -24,7 +24,7 @@ jobs:
         run: pipx install poetry
 
       - name: Install dependencies
-        run: poetry install --no-root --with dev
+        run: poetry install --with dev
 
       - name: Run tests
         run: poetry run pytest tests/ -v --tb=short

@@ -1,5 +1,5 @@
 """
-Tests for the analyse repository module.
+Tests for the snapshot analysis module and its shared dependencies.
 """
 
 import json
@@ -10,15 +10,13 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # pylint: disable=wrong-import-position,import-error
-from scripts.analyse_repository import (
-    _filter_snapshots,
-    _parse_blame_output,
-    load_existing_state,
-)
+from scripts._blame import parse_blame_year_counts
+from scripts._data_io import load_snapshot_data
+from scripts.analyse_repository import _filter_snapshots
 
 
-class TestParseBlameOutput:
-    """Tests for the git blame output parser."""
+class TestParseBlameYearCounts:
+    """Tests for parsing git blame --line-porcelain output into year counts."""
 
     def test_single_file_single_author_year(self):
         """Test parsing a blame output with a single commit and author."""
@@ -29,7 +27,7 @@ class TestParseBlameOutput:
             "filename test.py\n"
             "\tprint('hello world')\n"
         )
-        result = _parse_blame_output(blame_output)
+        result = parse_blame_year_counts(blame_output)
         year = datetime.fromtimestamp(1704067200, timezone.utc).strftime("%Y")
         assert result == {year: 1}
 
@@ -47,7 +45,7 @@ class TestParseBlameOutput:
             "filename test.py\n"
             "\tconst y = 2;\n"
         )
-        result = _parse_blame_output(blame_output)
+        result = parse_blame_year_counts(blame_output)
         year_2021 = datetime.fromtimestamp(1609459200, timezone.utc).strftime("%Y")
         year_2024 = datetime.fromtimestamp(1704067200, timezone.utc).strftime("%Y")
         assert result[year_2021] == 1
@@ -64,13 +62,13 @@ class TestParseBlameOutput:
             "\tline two\n"
             "\tline three\n"
         )
-        result = _parse_blame_output(blame_output)
+        result = parse_blame_year_counts(blame_output)
         year = datetime.fromtimestamp(1609459200, timezone.utc).strftime("%Y")
         assert result[year] == 3
 
     def test_empty_output(self):
         """Test parsing an empty blame output."""
-        result = _parse_blame_output("")
+        result = parse_blame_year_counts("")
         assert result == {}
 
     def test_invalid_timestamp_ignored(self):
@@ -82,7 +80,7 @@ class TestParseBlameOutput:
             "filename test.py\n"
             "\tprint('hello')\n"
         )
-        result = _parse_blame_output(blame_output)
+        result = parse_blame_year_counts(blame_output)
         assert result == {}
 
     def test_40_and_64_char_hashes(self):
@@ -94,13 +92,13 @@ class TestParseBlameOutput:
             "filename test.py\n"
             "\tprint('hello')\n"
         )
-        result = _parse_blame_output(blame_output)
+        result = parse_blame_year_counts(blame_output)
         year = datetime.fromtimestamp(1704067200, timezone.utc).strftime("%Y")
         assert year in result
 
 
-class TestLoadExistingState:
-    """Tests for loading existing JSON state."""
+class TestLoadSnapshotData:
+    """Tests for loading snapshot data from JSON files."""
 
     def test_load_valid_json(self):
         """Test loading a correctly formatted existing JSON state."""
@@ -120,8 +118,7 @@ class TestLoadExistingState:
             json.dump(data, f)
             f.flush()
 
-            result = load_existing_state(f.name)
-            # load_existing_state always returns {"snapshots": [...], "fossils": {}}
+            result = load_snapshot_data(f.name)
             assert "snapshots" in result
             assert "fossils" in result
             snapshots = result["snapshots"]
@@ -132,7 +129,7 @@ class TestLoadExistingState:
 
     def test_file_not_exists(self):
         """Test loading state when the requested file does not exist, expecting a blank default structure."""
-        result = load_existing_state("/nonexistent/path/data.json")
+        result = load_snapshot_data("/nonexistent/path/data.json")
         assert result == {"snapshots": [], "fossils": {}}
 
     def test_corrupted_json_returns_empty(self):
@@ -141,7 +138,7 @@ class TestLoadExistingState:
             f.write("not valid json {")
             f.flush()
 
-            result = load_existing_state(f.name)
+            result = load_snapshot_data(f.name)
             assert result == {"snapshots": [], "fossils": {}}
 
         os.unlink(f.name)
