@@ -446,11 +446,12 @@ svg#main-chart rect[tabindex="0"]:focus {
     pointer-events: none;
     background: var(--abyss);
     border: 1px solid var(--border);
-    padding: 1.75rem;
+    padding: 1.25rem;
     border-radius: var(--radius-md);
     z-index: 100;
     min-width: 340px;
     max-width: min(340px, 90vw);
+    overflow-wrap: break-word;
     box-shadow: 0 30px 60px oklch(0% 0 0 / 0.8);
     opacity: 0;
     visibility: hidden;
@@ -473,37 +474,23 @@ svg#main-chart rect[tabindex="0"]:focus {
 }
 
 .milestone-banner {
-    display: flex;
-    gap: 0.75rem;
-    align-items: flex-start;
-    background: linear-gradient(135deg, oklch(52% 0.22 285 / 0.15), oklch(68% 0.14 195 / 0.1));
     border: 1px solid oklch(52% 0.22 285 / 0.3);
     border-radius: 0.75rem;
-    padding: var(--space-sm);
-    margin-bottom: 1.25rem;
-}
-
-.milestone-icon {
-    font-size: 1.5rem;
-    flex-shrink: 0;
-}
-
-.milestone-content {
-    flex: 1;
+    padding: var(--space-xs) var(--space-sm);
+    margin-bottom: 1rem;
 }
 
 .milestone-title {
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     color: var(--ice);
-    margin-bottom: 0.35rem;
+    margin-bottom: 0.2rem;
 }
 
 .milestone-desc {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: var(--mist);
     line-height: 1.4;
-    opacity: 0.9;
 }
 
 .milestone-marker text {
@@ -515,52 +502,56 @@ svg#main-chart rect[tabindex="0"]:focus {
 }
 
 .tooltip-header {
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: var(--mist);
+    color: var(--frost);
+    margin-bottom: 0.6rem;
+}
+
+.tooltip-total {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--ice);
     margin-bottom: 0.75rem;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: var(--space-xs);
 }
 
-.tooltip-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.95rem;
-    padding: 0.35rem 0;
-    gap: var(--space-sm);
+.tooltip-breakdown {
+    border-top: 1px solid var(--border);
+    padding-top: 0.6rem;
 }
 
-.label-group {
+.tooltip-row {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    padding: 0.2rem 0;
 }
 
 .color-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
+    flex-shrink: 0;
 }
 
-.value-group {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-}
-
-.percent-tag {
-    font-size: 0.75rem;
+.tooltip-row-label {
     color: var(--mist);
-    font-family: var(--font-mono);
+    margin-right: auto;
 }
 
-.tooltip-divider {
-    height: 1px;
-    background: var(--border);
-    margin: 1.25rem 0;
+.tooltip-row-value {
+    color: var(--ice);
+    font-variant-numeric: tabular-nums;
+}
+
+.tooltip-row-pct {
+    font-size: 0.7rem;
+    color: var(--frost);
+    min-width: 4.2ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
 }
 
 .chart-legend {
@@ -1128,9 +1119,16 @@ svg#main-chart rect[tabindex="0"]:focus {
 }
 
 .repo-request-icon {
+    display: inline-block;
     font-size: var(--text-sm);
     color: var(--mist);
     opacity: 0.6;
+    transition: color 0.4s var(--ease-out-quart),
+        transform 0.6s var(--ease-out-quint);
+}
+
+.repo-request-title:hover .repo-request-icon {
+    transform: rotate(-3deg);
 }
 
 .repo-request-desc {
@@ -1252,6 +1250,99 @@ svg#main-chart rect[tabindex="0"]:focus {
     border-color: var(--ember);
 }
 
+/* --- Delight: Observatory star icon --- */
+
+.repo-request-icon.seafoam {
+    color: var(--seafoam);
+    opacity: 1;
+}
+
+.repo-request-icon.pulse {
+    animation: starPulse 0.7s var(--ease-out-quart);
+}
+
+@keyframes starPulse {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.35); opacity: 0.75; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+/* --- Delight: Button breath during submission --- */
+
+.repo-request-submit.loading {
+    animation: buttonBreath 1.4s ease-in-out infinite;
+}
+
+@keyframes buttonBreath {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.65; }
+}
+
+/* --- Delight: Section success glow --- */
+
+.repo-request.glow {
+    border-color: var(--seafoam);
+    transition: border-color 0.5s var(--ease-out-quart);
+}
+
+@media (max-width: 639px) {
+    .visualization-canvas {
+        min-height: auto;
+        aspect-ratio: 4 / 3;
+    }
+
+    svg#main-chart {
+        min-height: auto;
+    }
+
+    .noise-overlay {
+        opacity: 0;
+    }
+
+    .selector-pill {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .selector-pill::-webkit-scrollbar {
+        display: none;
+    }
+
+    .settings-group .control-label {
+        display: none;
+    }
+
+    .insight-card {
+        padding: var(--space-md);
+        border-radius: var(--radius-md);
+    }
+
+    .fossil-card {
+        padding: var(--space-sm) var(--space-md);
+    }
+
+    .repo-request,
+    .fossil-finder {
+        padding: var(--space-md);
+    }
+
+    .repo-request-submit {
+        width: 100%;
+    }
+}
+
+@media (min-width: 640px) and (max-width: 1023px) {
+    .visualization-canvas {
+        min-height: auto;
+        aspect-ratio: 16 / 9;
+    }
+
+    svg#main-chart {
+        min-height: auto;
+    }
+}
+
 @media (max-width: 480px) {
     .repo-request-input {
         width: 100%;
@@ -1264,6 +1355,17 @@ svg#main-chart rect[tabindex="0"]:focus {
 
     .repo-request-submit {
         width: 100%;
+    }
+}
+
+@media (max-height: 480px) and (orientation: landscape) {
+    .visualization-canvas {
+        min-height: auto;
+        aspect-ratio: 16 / 9;
+    }
+
+    svg#main-chart {
+        min-height: auto;
     }
 }
 
@@ -1283,6 +1385,17 @@ svg#main-chart rect[tabindex="0"]:focus {
     .help-icon {
         width: 44px;
         height: 44px;
+    }
+
+    .repo-btn:active,
+    .mode-btn:active,
+    .scale-btn:active {
+        background: oklch(100% 0 0 / 0.08);
+    }
+
+    .fossil-card:active,
+    .insight-card:active {
+        transform: scale(0.98);
     }
 }
 
