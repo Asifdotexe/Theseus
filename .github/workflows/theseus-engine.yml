@@ -38,7 +38,7 @@ jobs:
 
       - name: Create pull request for data updates
         if: success()
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@b1ddad2c994a25fbc81a28b3ec0e368bb2021c50 # v6.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "chore: update theseus persistence data across all repos"

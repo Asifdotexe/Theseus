@@ -67,7 +67,15 @@ def load_snapshot_data(file_path: str) -> dict:
             data = json.load(f)
         if isinstance(data, list):
             return {"snapshots": data, "fossils": {}}
-        return data
+        if isinstance(data, dict):
+            snapshots = data.get("snapshots")
+            if not isinstance(snapshots, list):
+                snapshots = []
+            fossils = data.get("fossils")
+            if not isinstance(fossils, dict):
+                fossils = {}
+            return {"snapshots": snapshots, "fossils": fossils}
+        return {"snapshots": [], "fossils": {}}
     except json.JSONDecodeError:
         logger.warning("%s is corrupted, starting fresh.", file_path)
         return {"snapshots": [], "fossils": {}}
