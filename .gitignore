@@ -207,3 +207,9 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 .impeccable/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
