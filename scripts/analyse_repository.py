@@ -151,6 +151,12 @@ def analyze_snapshots(repo_path: str, commit_hash: str) -> dict[str, int]:
     except ValueError:
         pass
 
+    logger.info("  Blaming %d valid files (%d workers)...", len(valid_files), max_workers)
+
+    total_files = len(valid_files)
+    completed = 0
+    next_log_pct = 10
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_file = {
             executor.submit(_blame_single_file, repo_path, file): file
@@ -161,6 +167,12 @@ def analyze_snapshots(repo_path: str, commit_hash: str) -> dict[str, int]:
             file_dist = future.result()
             for year, count in file_dist.items():
                 age_distribution[year] += count
+
+            completed += 1
+            pct = completed / total_files * 100
+            if pct >= next_log_pct:
+                logger.info("  Blame progress: %d/%d (%.0f%%)", completed, total_files, pct)
+                next_log_pct += 10
 
     return dict(age_distribution)
 
