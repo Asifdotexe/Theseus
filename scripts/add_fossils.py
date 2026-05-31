@@ -60,7 +60,7 @@ _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
-from _blame import _blank_fossil, blame_files_oldest_fossil
+from _blame import BlameRunner, _blank_fossil
 from _data_io import load_snapshot_data, save_snapshot_data
 from _utils import (
     get_default_branch,
@@ -206,7 +206,9 @@ def get_genesis_fossil(
                 break
             continue
 
-        fossil = blame_files_oldest_fossil(repo_path, files, view_commit=commit)
+        fossil = BlameRunner(repo_path, max_workers=20).blame_oldest_fossil(
+            files, view_commit=commit
+        )
 
         if fossil["file"] and fossil["timestamp"] < global_oldest["timestamp"]:
             global_oldest = fossil
@@ -265,7 +267,9 @@ def get_survivor_fossil(repo_path: str | Path) -> dict:
         return _blank_fossil()
 
     logger.info("  Blaming %d tracked files...", len(tracked_files))
-    return blame_files_oldest_fossil(repo_path, tracked_files, view_commit=view_commit)
+    return BlameRunner(repo_path, max_workers=20).blame_oldest_fossil(
+        tracked_files, view_commit=view_commit
+    )
 
 
 # ---------------------------------------------------------------------------

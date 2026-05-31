@@ -60,6 +60,7 @@ logger = logging.getLogger(__name__)
 
 _HEX = frozenset("0123456789abcdef")
 
+
 # OPTIMIZATION: _is_hash replaces `all(c in hex for c in s.lower())`.
 # Profiling revealed that all() + generator expression is ~4.8M calls per parse
 # run on a 15K-line blame output. Each call creates a generator object and
@@ -197,12 +198,13 @@ def find_oldest_fossil_in_blame(
                 fossil["timestamp"] = ts
                 fossil["file"] = file_path
                 fossil["content"] = content
-                fossil["year"] = str(
-                    datetime.fromtimestamp(ts, timezone.utc).year
-                )
+                fossil["year"] = str(datetime.fromtimestamp(ts, timezone.utc).year)
                 commit_hash = current_commit_data.get("commit", "")
-                fossil["commit"] = (commit_hash[:7] if isinstance(commit_hash, str)
-                                    else str(commit_hash)[:7])
+                fossil["commit"] = (
+                    commit_hash[:7]
+                    if isinstance(commit_hash, str)
+                    else str(commit_hash)[:7]
+                )
                 fossil["view_commit"] = view_commit
                 fossil["line"] = line_num
         else:
@@ -217,47 +219,6 @@ def find_oldest_fossil_in_blame(
                 current_commit_data = {"commit": p0}
 
     return fossil
-
-
-# Parallel blame runner (internal)
-def _blame_files_internal(
-    repo_path: str | Path,
-    files: list[str],
-    max_workers: int,
-    process_result,
-    total_files_hint: int | None = None,
-) -> None:
-    """
-    Blame files in parallel and call ``process_result(file, raw_output)`` for each.
-
-    Logs 10 % progress steps so the user sees the script is making progress.
-
-    :param repo_path: Path to the git repository.
-    :param files: List of relative file paths to blame.
-    :param max_workers: Maximum number of parallel blame processes.
-    :param process_result: Callback ``(file_path: str, raw_output: str) -> None``.
-    :param total_files_hint: For display purposes only; overrides the log count.
-    """
-    total = total_files_hint or len(files)
-    completed = 0
-    next_log_pct = 10
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_file = {
-            executor.submit(blame_single_file, repo_path, f): f for f in files
-        }
-
-        for future in concurrent.futures.as_completed(future_to_file):
-            file_path = future_to_file[future]
-            raw_output = future.result()
-            if raw_output:
-                process_result(file_path, raw_output)
-
-            completed += 1
-            pct = completed / total * 100
-            if pct >= next_log_pct:
-                logger.info("  Blame progress: %d/%d (%.0f%%)", completed, total, pct)
-                next_log_pct += 10
 
 
 # Single-file year-count (for incremental blame)
@@ -278,80 +239,126 @@ def blame_single_file_year_counts(
     return {}
 
 
-def blame_files_to_file_compositions(
-    repo_path: str | Path,
-    files: list[str],
-    max_workers: int = 8,
-) -> dict[str, dict[str, int]]:
+class BlameRunner:
     """
-    Blame a list of files in parallel and return per-file year-count maps.
+    Encapsulates parallel git blame execution with progress logging.
+
+    Wraps ``_blame_files_internal`` and exposes three post-processing modes:
+
+    * ``blame_year_counts`` — aggregate lines per author-year across all files.
+    * ``blame_file_compositions`` — per-file ``{file: {year: count}}`` maps.
+    * ``blame_oldest_fossil`` — single oldest-authored line across all files.
 
     :param repo_path: Path to the git repository.
-    :param files: List of relative file paths to blame.
-    :param max_workers: Maximum parallel blame processes (default 8).
-    :return: ``{file_path: {year: count}}`` for each blamed file.
+    :param max_workers: Maximum number of parallel blame processes (default 8).
     """
-    if not files:
-        return {}
-    logger.info("  Blaming %d changed files (%d workers)...", len(files), max_workers)
-    result: dict[str, dict[str, int]] = {}
-    lock = threading.Lock()
 
-    def _store(file_path: str, raw_output: str) -> None:
-        counts = parse_blame_year_counts(raw_output)
-        with lock:
-            result[file_path] = counts
+    def __init__(self, repo_path: str | Path, max_workers: int = 8):
+        self.repo_path = repo_path
+        self.max_workers = max_workers
 
-    _blame_files_internal(repo_path, files, max_workers, _store)
-    return result
+    def blame_year_counts(self, files: list[str]) -> dict[str, int]:
+        """
+        Aggregate ``{year: line_count}`` across all given files.
 
+        :param files: List of relative file paths to blame.
+        :return: ``{year: count}`` aggregated across all files.
+        """
+        if not files:
+            return {}
+        logger.info("  Blaming %d files (%d workers)...", len(files), self.max_workers)
+        age_distribution: dict[str, int] = defaultdict(int)
 
-# Public parallel-blame helpers
-def blame_files_year_counts(
-    repo_path: str | Path, files: list[str], max_workers: int = 8
-) -> dict[str, int]:
-    """
-    Blame a list of files in parallel and return an aggregated year-to-line-count map.
+        def _accumulate(file_path: str, raw_output: str) -> None:
+            for year, count in parse_blame_year_counts(raw_output).items():
+                age_distribution[year] += count
 
-    :param repo_path: Path to the git repository.
-    :param files: List of relative file paths to blame.
-    :param max_workers: Maximum parallel blame processes (default 8).
-    :return: ``{year: line_count}`` aggregated across all files.
-    """
-    logger.info("  Blaming %d files (%d workers)...", len(files), max_workers)
-    age_distribution: dict[str, int] = defaultdict(int)
+        self._blame_files_internal(files, _accumulate)
+        return dict(age_distribution)
 
-    def _accumulate(file_path: str, raw_output: str) -> None:
-        for year, count in parse_blame_year_counts(raw_output).items():
-            age_distribution[year] += count
+    def blame_file_compositions(self, files: list[str]) -> dict[str, dict[str, int]]:
+        """
+        Return per-file year-count maps for all given files.
 
-    _blame_files_internal(repo_path, files, max_workers, _accumulate)
-    return dict(age_distribution)
+        :param files: List of relative file paths to blame.
+        :return: ``{file_path: {year: count}}``.
+        """
+        if not files:
+            return {}
+        logger.info(
+            "  Blaming %d changed files (%d workers)...",
+            len(files),
+            self.max_workers,
+        )
+        result: dict[str, dict[str, int]] = {}
+        lock = threading.Lock()
 
+        def _store(file_path: str, raw_output: str) -> None:
+            counts = parse_blame_year_counts(raw_output)
+            with lock:
+                result[file_path] = counts
 
-def blame_files_oldest_fossil(
-    repo_path: str | Path,
-    files: list[str],
-    max_workers: int = 20,
-    view_commit: str = "",
-) -> dict:
-    """
-    Blame a list of files in parallel and return the single oldest fossil found.
+        self._blame_files_internal(files, _store)
+        return result
 
-    :param repo_path: Path to the git repository.
-    :param files: List of relative file paths to blame.
-    :param max_workers: Maximum parallel blame processes (default 20).
-    :param view_commit: Git ref to store as ``view_commit`` in the result.
-    :return: Fossil dict for the oldest line across all files, or a blank
-             fossil if no lines could be blamed.
-    """
-    global_oldest = _blank_fossil()
+    def blame_oldest_fossil(self, files: list[str], view_commit: str = "") -> dict:
+        """
+        Return the single oldest fossil found across all given files.
 
-    def _find(file_path: str, raw_output: str) -> None:
-        nonlocal global_oldest
-        fossil = find_oldest_fossil_in_blame(raw_output, file_path, view_commit)
-        if fossil["timestamp"] < global_oldest["timestamp"] and fossil["file"]:
-            global_oldest = fossil
+        :param files: List of relative file paths to blame.
+        :param view_commit: Git ref to store as ``view_commit`` in the result.
+        :return: Fossil dict for the oldest line, or a blank fossil.
+        """
+        global_oldest = _blank_fossil()
 
-    _blame_files_internal(repo_path, files, max_workers, _find)
-    return global_oldest
+        def _find(file_path: str, raw_output: str) -> None:
+            nonlocal global_oldest
+            fossil = find_oldest_fossil_in_blame(raw_output, file_path, view_commit)
+            if fossil["timestamp"] < global_oldest["timestamp"] and fossil["file"]:
+                global_oldest = fossil
+
+        self._blame_files_internal(files, _find)
+        return global_oldest
+
+    def _blame_files_internal(
+        self,
+        files: list[str],
+        process_result,
+        total_files_hint: int | None = None,
+    ) -> None:
+        """
+        Blame files in parallel and call ``process_result(file, raw_output)``.
+
+        Logs 10 % progress steps.
+
+        :param files: List of relative file paths to blame.
+        :param process_result: Callback ``(file_path, raw_output) -> None``.
+        :param total_files_hint: Overrides the log count for display.
+        """
+        total = total_files_hint or len(files)
+        completed = 0
+        next_log_pct = 10
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.max_workers
+        ) as executor:
+            future_to_file = {
+                executor.submit(blame_single_file, self.repo_path, f): f for f in files
+            }
+
+            for future in concurrent.futures.as_completed(future_to_file):
+                file_path = future_to_file[future]
+                raw_output = future.result()
+                if raw_output:
+                    process_result(file_path, raw_output)
+
+                completed += 1
+                pct = completed / total * 100
+                if pct >= next_log_pct:
+                    logger.info(
+                        "  Blame progress: %d/%d (%.0f%%)",
+                        completed,
+                        total,
+                        pct,
+                    )
+                    next_log_pct += 10
