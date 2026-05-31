@@ -137,6 +137,9 @@ class TheseusVisualizer {
     const feedback = document.getElementById("repo-request-feedback");
     if (!form || !input || !feedback) return;
 
+    const section = form.closest(".repo-request");
+    const star = section?.querySelector(".repo-request-icon");
+
     const WEB3FORM_KEY = "__WEB3FORM_ACCESS_KEY__";
 
     function setFeedback(message, type) {
@@ -152,6 +155,11 @@ class TheseusVisualizer {
         .replace(/\/$/, "")
         .replace(/^github\.com\//, "");
       return /^[\w.-]+\/[\w.-]+$/.test(cleaned) ? cleaned : null;
+    }
+
+    if (star) {
+      input.addEventListener("focus", () => star.classList.add("seafoam"));
+      input.addEventListener("blur", () => star.classList.remove("seafoam"));
     }
 
     input.addEventListener("input", () => {
@@ -187,6 +195,7 @@ class TheseusVisualizer {
       const originalText = submitBtn.textContent;
       submitBtn.disabled = true;
       submitBtn.textContent = "Submitting...";
+      submitBtn.classList.add("loading");
 
       const formController = new AbortController();
 
@@ -214,6 +223,15 @@ class TheseusVisualizer {
             "success",
           );
           input.value = "";
+          if (star) {
+            star.classList.remove("seafoam");
+            star.classList.add("pulse");
+            setTimeout(() => star.classList.remove("pulse"), 800);
+          }
+          if (section) {
+            section.classList.add("glow");
+            setTimeout(() => section.classList.remove("glow"), 2000);
+          }
         } else {
           setFeedback("Submission failed. Please try again later.", "error");
         }
@@ -222,6 +240,7 @@ class TheseusVisualizer {
       } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = originalText;
+        submitBtn.classList.remove("loading");
       }
     });
   }
