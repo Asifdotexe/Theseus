@@ -10,7 +10,11 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # pylint: disable=wrong-import-position,import-error
-from scripts.analyse_repository import _parse_blame_output, load_existing_state
+from scripts.analyse_repository import (
+    _filter_snapshots,
+    _parse_blame_output,
+    load_existing_state,
+)
 
 
 class TestParseBlameOutput:
@@ -141,3 +145,41 @@ class TestLoadExistingState:
             assert result == {"snapshots": [], "fossils": {}}
 
         os.unlink(f.name)
+
+
+class TestFilterSnapshots:
+    """Tests for the snapshot filtering helper."""
+
+    def test_filters_out_processed_periods(self):
+        """Test that processed periods are excluded from the result."""
+        all_snaps = [("2020-01", "a"), ("2020-02", "b"), ("2020-03", "c")]
+        processed = {"2020-01", "2020-03"}
+        result = _filter_snapshots(all_snaps, processed)
+        assert result == [("2020-02", "b")]
+
+    def test_returns_all_when_none_processed(self):
+        """Test that when no periods have been processed, all snapshots are returned."""
+        all_snaps = [("2020-01", "a"), ("2020-02", "b")]
+        result = _filter_snapshots(all_snaps, set())
+        assert result == all_snaps
+
+    def test_empty_input(self):
+        """Test that an empty snapshot list returns an empty list."""
+        result = _filter_snapshots([], set())
+        assert result == []
+
+    def test_reprocess_includes_specific_period(self):
+        """Test that a reprocess period is included even if it was already processed."""
+        all_snaps = [("2020-01", "a"), ("2020-02", "b"), ("2020-03", "c")]
+        processed = {"2020-01", "2020-03"}
+        result = _filter_snapshots(all_snaps, processed, reprocess="2020-01")
+        assert ("2020-01", "a") in result
+        assert ("2020-02", "b") in result
+        assert ("2020-03", "c") not in result
+
+    def test_reprocess_with_unprocessed_period(self):
+        """Test that reprocessing an unprocessed period just includes it normally."""
+        all_snaps = [("2020-01", "a"), ("2020-02", "b")]
+        processed = {"2020-02"}
+        result = _filter_snapshots(all_snaps, processed, reprocess="2020-01")
+        assert result == [("2020-01", "a")]

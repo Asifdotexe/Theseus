@@ -10,8 +10,11 @@ Consolidates helpers that were previously duplicated across
 
 import json
 import logging
+import os
+import shutil
 import subprocess
 import sys
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -104,3 +107,65 @@ def get_default_branch(repo_path: str | None = None) -> str:
             continue
 
     return "HEAD"
+
+
+def remove_path(path: str) -> None:
+    """
+    Remove a file or directory using OS-native fast deletion.
+
+    Uses ``cmd /c rd /s /q`` on Windows and ``rm -rf`` on Unix,
+    falling back to ``shutil.rmtree`` on failure.
+
+    :param path: Path to the file or directory to remove.
+    """
+    if not os.path.exists(path):
+        return
+
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["cmd", "/c", "rd", "/s", "/q", path],
+                capture_output=True,
+                timeout=30,
+            )
+            if not os.path.exists(path):
+                return
+        except (subprocess.SubprocessError, OSError):
+            pass
+    else:
+        try:
+            subprocess.run(
+                ["rm", "-rf", path],
+                capture_output=True,
+                timeout=30,
+            )
+            if not os.path.exists(path):
+                return
+        except (subprocess.SubprocessError, OSError):
+            pass
+
+    # Fallback: retry with shutil.rmtree
+    for attempt in range(3):
+        try:
+            shutil.rmtree(path, ignore_errors=False)
+
+            def handle_remove_readonly(func, path, _exc_info):
+                try:
+                    current_mode = os.stat(path).st_mode
+                    os.chmod(
+                        path,
+                        current_mode | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH,
+                    )
+                    func(path)
+                except PermissionError:
+                    pass
+                except Exception:  # noqa: BLE001
+                    pass
+
+            shutil.rmtree(path, onexc=handle_remove_readonly)
+            break
+        except Exception:  # noqa: BLE001
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+            else:
+                logger.warning("Failed to clean up %s after 3 attempts", path)

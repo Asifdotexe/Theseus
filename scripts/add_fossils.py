@@ -32,7 +32,7 @@ _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
-from _utils import get_default_branch, run_command, load_config
+from _utils import get_default_branch, run_command, load_config, remove_path
 
 logger = logging.getLogger(__name__)
 
@@ -459,6 +459,10 @@ def backfill_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
             logger.error("  ✗ Error computing fossils for %s: %s", repo_name, e)
             had_failures = True
 
+    # Clean up temp repos
+    if temp_dir.exists():
+        remove_path(str(temp_dir))
+
     return had_failures
 
 
@@ -578,6 +582,10 @@ def update_survivor_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("  ✗ Error updating survivor for %s: %s", repo_name, e)
             had_failures = True
+
+    # Clean up temp repos
+    if temp_dir.exists():
+        remove_path(str(temp_dir))
 
     logger.info("\nSurvivor update complete. %d repo(s) updated.", updated_count)
     return had_failures

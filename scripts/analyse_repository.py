@@ -6,12 +6,11 @@ Uses quarterly resolution for historical data (pre-2025) and monthly for recent 
 Fossil computation is handled separately by add_fossils.py.
 """
 
+import argparse
 import concurrent.futures
 import json
 import logging
 import os
-import shutil
-import stat
 import sys
 import time
 from collections import defaultdict
@@ -23,7 +22,7 @@ _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
-from _utils import run_command, get_default_branch, load_config
+from _utils import run_command, get_default_branch, load_config, remove_path
 
 logger = logging.getLogger(__name__)
 
@@ -197,7 +196,30 @@ def _atomic_write_json(
     os.replace(tmp_path, json_path)
 
 
-def process_repository(repo_slug: str, data_dir: str) -> None:
+def _filter_snapshots(
+    all_snapshots: list[tuple[str, str]],
+    processed_periods: set[str],
+    reprocess: str | None = None,
+) -> list[tuple[str, str]]:
+    """
+    Filter a list of (period, commit) snapshots down to unprocessed entries.
+
+    When *reprocess* is provided (``YYYY-MM``), that specific period is
+    included regardless of whether it exists in *processed_periods*.
+
+    :param all_snapshots: Full list of (period, commit) tuples.
+    :param processed_periods: Set of period strings that have already been processed.
+    :param reprocess: Optional period to re-run (e.g. ``"2023-06"``).
+    :return: List of (period, commit) tuples that need processing.
+    """
+    result: list[tuple[str, str]] = []
+    for period, commit in all_snapshots:
+        if period not in processed_periods or (reprocess and period == reprocess):
+            result.append((period, commit))
+    return result
+
+
+def process_repository(repo_slug: str, data_dir: str, reprocess: str | None = None) -> None:
     # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """
     Orchestrate the extraction of Ship of Theseus code persistence data
@@ -244,11 +266,7 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
         processed_periods = set(item["snapshot_date"] for item in historical_snapshots)
 
         all_snapshots = get_snapshots(temp_repo_path)
-        new_snapshots = [
-            (period, commit)
-            for period, commit in all_snapshots
-            if period not in processed_periods
-        ]
+        new_snapshots = _filter_snapshots(all_snapshots, processed_periods, reprocess)
 
         if not new_snapshots:
             logger.info(
@@ -326,48 +344,37 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
             )
 
     finally:
-        if os.path.exists(temp_repo_path):
-            logger.info("Cleaning up temporary directory: %s", temp_repo_path)
-
-            def handle_remove_readonly(func, path, _exc_info):
-                """Handle permission errors on Windows/Unix by adding write permission."""
-                try:
-                    current_mode = os.stat(path).st_mode
-                    os.chmod(
-                        path, current_mode | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH
-                    )
-                    func(path)
-                except PermissionError as e:
-                    logger.warning("Permission error cleaning up %s: %s", path, e)
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    logger.warning("Error cleaning up %s: %s", path, e)
-
-            for attempt in range(3):
-                try:
-                    shutil.rmtree(temp_repo_path, onexc=handle_remove_readonly)
-                    break
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    if attempt < 2:
-                        backoff = 2 ** attempt
-                        logger.warning(
-                            "Cleanup attempt %d failed, retrying in %ds: %s",
-                            attempt + 1,
-                            backoff,
-                            e,
-                        )
-                        time.sleep(backoff)
-                    else:
-                        logger.error(
-                            "Failed to clean up temporary directory after 3 attempts: %s",
-                            e,
-                        )
+        remove_path(temp_repo_path)
 
 
-def main():
+def main() -> None:
     """
     Main entry point. Loads configuration, creates output directory,
     and runs the repository analysis pipeline for all specified targets.
+
+    CLI flags
+    ---------
+    --repo NAME    Process only the given repository (by config name).
+    --reprocess YYYY-MM
+                   Re-process a specific snapshot period even if it already exists in the data.
     """
+    parser = argparse.ArgumentParser(
+        description="Analyse repository git history for the Ship of Theseus pipeline."
+    )
+    parser.add_argument(
+        "--repo",
+        metavar="NAME",
+        default=None,
+        help="Only process this repository (e.g. 'react'). If omitted, all repos are processed.",
+    )
+    parser.add_argument(
+        "--reprocess",
+        metavar="YYYY-MM",
+        default=None,
+        help="Re-process a specific snapshot period (e.g. '2023-06').",
+    )
+    args = parser.parse_args()
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
@@ -378,34 +385,57 @@ def main():
     DATA_OUTPUT_DIR = config.get("dataDir", "./data")
     os.makedirs(DATA_OUTPUT_DIR, exist_ok=True)
 
-    TARGETS = [
-        repo["repo"] for repo in config.get("repositories", []) if "repo" in repo
-    ]
-    if not TARGETS:
+    # Build from config: name -> repo slug
+    all_targets: dict[str, str] = {
+        repo["name"]: repo["repo"]
+        for repo in config.get("repositories", [])
+        if "name" in repo and "repo" in repo
+    }
+    if not all_targets:
         logger.error("No valid repositories found in configuration.")
         sys.exit(1)
 
+    if args.repo:
+        if args.repo not in all_targets:
+            logger.error(
+                "Unknown repository '%s'. Valid options: %s",
+                args.repo,
+                ", ".join(all_targets),
+            )
+            sys.exit(1)
+        selected_targets = {args.repo: all_targets[args.repo]}
+        logger.info("Processing single repository: %s", args.repo)
+    else:
+        selected_targets = all_targets
+        logger.info("Processing %d repositories", len(selected_targets))
+
+    if args.reprocess:
+        logger.info("Re-processing period: %s", args.reprocess)
+
     # Bound top-level workers by CPU count
     max_top_level_workers = min(
-        len(TARGETS), int(os.getenv("MAX_TOP_LEVEL_WORKERS", os.cpu_count() or 1))
+        len(selected_targets),
+        int(os.getenv("MAX_TOP_LEVEL_WORKERS", os.cpu_count() or 1)),
     )
 
     overall_start = time.perf_counter()
-    logger.info("Starting analysis pipeline for %d repositories", len(TARGETS))
 
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=max_top_level_workers
     ) as executor:
         futures = {
-            executor.submit(process_repository, target, DATA_OUTPUT_DIR): target
-            for target in TARGETS
+            executor.submit(
+                process_repository, slug, DATA_OUTPUT_DIR, args.reprocess
+            ): name
+            for name, slug in selected_targets.items()
         }
         for future in concurrent.futures.as_completed(futures):
-            target = futures[future]
+            name = futures[future]
             try:
                 future.result()
+                logger.info("✓ %s completed successfully.", name)
             except Exception as e:  # pylint: disable=broad-exception-caught
-                logger.error("Failed to process %s: %s", target, e)
+                logger.error("Failed to process %s: %s", name, e)
 
     overall_elapsed = time.perf_counter() - overall_start
     logger.info("TOTAL PIPELINE EXECUTION TIME: %.2f seconds", overall_elapsed)
