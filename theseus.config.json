@@ -13,11 +13,6 @@
           "description": "First stable architecture release with standardized core components."
         },
         {
-          "date": "2024-06",
-          "title": "Monorepo & LangGraph Cloud",
-          "description": "Massive expansion with LangGraph Cloud and integration packages."
-        },
-        {
           "date": "2025-10",
           "title": "LangChain v1.0 (The Pruning)",
           "description": "Legacy code moved to langchain-classic for a leaner, faster core."
@@ -46,19 +41,9 @@
           "description": "Introduced Hooks for state management without classes."
         },
         {
-          "date": "2024-04",
+          "date": "2024-12",
           "title": "React 19 major update",
           "description": "Added Server Components and new form handling."
-        },
-        {
-          "date": "2019-06",
-          "title": "Data quirk: code looks different",
-          "description": "Data quirk: Internal code reorganization."
-        },
-        {
-          "date": "2023-06",
-          "title": "Data quirk: lots missing",
-          "description": "Data quirk: Missing historical data."
         }
       ]
     },
@@ -74,19 +59,9 @@
           "description": "Created by merging Numeric and Numarray."
         },
         {
-          "date": "2006-03",
-          "title": "NumPy 1.0 released",
-          "description": "Official 1.0 release as a standalone library."
-        },
-        {
           "date": "2013-04",
           "title": "Python 2 & 3 unified",
           "description": "Unified support for Python 2 and 3."
-        },
-        {
-          "date": "2017-06",
-          "title": "Major features added",
-          "description": "Major update with 50+ new functions."
         },
         {
           "date": "2024-06",
@@ -102,24 +77,9 @@
       "repo": "zed-industries/zed",
       "milestones": [
         {
-          "date": "2023-03",
-          "title": "Zed Beta Launch",
-          "description": "High-performance code editor enters public beta on macOS."
-        },
-        {
           "date": "2023-12",
           "title": "GPUI2 Transition and Open Sourced",
           "description": "Major rewrite of the UI framework for 120 FPS performance and The Zed source code is made available to the public."
-        },
-        {
-          "date": "2024-06",
-          "title": "Linux Release",
-          "description": "Official launch of Zed for Linux after months of development."
-        },
-        {
-          "date": "2024-09",
-          "title": "Zed AI Launch",
-          "description": "Introduction of native AI features and the Zed AI ecosystem."
         }
       ]
     },

@@ -1,235 +1,178 @@
 """
-This script is responsible for doing the heavy lifting.
 Processes repository snapshots incrementally to track code age distribution.
-Uses quarterly resolution for historical data (pre-2025) and monthly for recent data (2025+).
 
-Fossil computation is handled separately by add_fossils.py.
+This script is responsible for the **snapshot generation** step of the Theseus
+data pipeline.  It clones (or fetches) a git repository, walks its commit
+history at quarterly resolution (pre-2025) / monthly resolution (2025+), runs
+``git blame --line-porcelain`` on all tracked files at each snapshot commit,
+and aggregates the results into year-to-line-count distributions.
+
+The output JSON has the standard ``{snapshots, fossils}`` shape where
+``fossils`` is left untouched (preserving any previously computed fossil data).
+Fossil computation is handled separately by ``add_fossils.py``.
+
+Fossil data model
+-----------------
+Scripts in this pipeline use two fossil types:
+
+  **Genesis** — the single oldest-authored line ever written in the repository.
+  **Survivor** — the single oldest-authored line still alive at current HEAD.
+
+Each fossil stores ``{timestamp, file, content, year, commit, view_commit, line}``.
+See ``_blame.py`` for the full data-model definition and the algorithms used
+to discover each fossil type.
 """
 
-import concurrent.futures
-import json
+import argparse
 import logging
 import os
-import shutil
-import stat
-import subprocess
 import sys
 import time
 from collections import defaultdict
-from datetime import datetime, timezone
 from itertools import groupby
+
+# Ensure sibling imports work in all invocation contexts
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+
+from _blame import blame_files_year_counts
+from _data_io import load_snapshot_data, save_snapshot_data
+from _utils import get_default_branch, get_tracked_files, load_config, run_command
 
 logger = logging.getLogger(__name__)
 
 
-def _run_command(cmd: list[str], cwd: str | None = None) -> str:
-    """
-    Execute a shell command and return its standard output
-
-    :param cmd: List of arguments forming the command.
-    :param cwd: Directory path where the command should be executed.
-    :return: Decoded standard output of the command.
-    """
-    try:
-        result = subprocess.run(
-            cmd,
-            cwd=cwd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=True,
-        )
-        return result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(
-            f"Command '{' '.join(cmd)}' failed with exit code {e.returncode}"
-        ) from e
-
-
 def clone_repository(repo_slug: str, clone_dir: str) -> None:
     """
-    Dynamically clone a GitHub repository given its owner/name slug.
+    Clone a GitHub repository into a local directory.
 
-    :param repo_slug: The GitHub repository identifier (e.g., 'facebook/react').
-    :param clone_dir: The local directory where the repository should be cloned.
+    :param repo_slug: GitHub ``owner/name`` slug (e.g. ``'facebook/react'``).
+    :param clone_dir: Local path to clone into.
     """
     logger.info("Cloning %s into %s...", repo_slug, clone_dir)
     repo_url = f"https://github.com/{repo_slug}.git"
-    _run_command(["git", "clone", repo_url, clone_dir])
+    run_command(["git", "clone", repo_url, clone_dir])
 
 
-def get_snapshots(repo_path: str) -> list[tuple[str, str]]:
+def get_snapshot_periods(repo_path: str) -> list[tuple[str, str]]:
     """
-    Identify commits for snapshots: quarterly for pre-2025, monthly for 2025+.
+    Identify (period, commit) snapshots from the repository's log.
 
-    Quarterly uses the last month of each quarter: 03, 06, 09, 12.
+    Resolution is quarterly (last month of each quarter: 03, 06, 09, 12) for
+    pre-2025 history and monthly for 2025+.
 
     :param repo_path: Path to the git repository.
-    :return: A list of tuples, each containing a 'YYYY-MM' period and the corresponding commit hash.
+    :return: List of ``(YYYY-MM, commit_hash)`` tuples sorted chronologically.
     """
-    log_output = _run_command(
+    log_output = run_command(
         cmd=["git", "log", "--pretty=format:%H|%cI"], cwd=repo_path
     )
 
-    snapshots: dict[str, str] = {}
+    periods: dict[str, str] = {}
     for line in log_output.splitlines():
         if not line:
             continue
         commit_hash, commit_date = line.split("|")
         period = commit_date[:7]
-        # Keep the first (newest) commit per period
-        if period not in snapshots:
-            snapshots[period] = commit_hash
+        if period not in periods:
+            periods[period] = commit_hash
 
     quarterly_months = {"03", "06", "09", "12"}
-    filtered_snapshots: dict[str, str] = {}
+    filtered: dict[str, str] = {}
 
-    for period, commit_hash in snapshots.items():
+    for period, commit_hash in periods.items():
         year = period[:4]
         month = period[5:7]
-
         if int(year) >= 2025:
-            filtered_snapshots[period] = commit_hash
+            filtered[period] = commit_hash
         elif month in quarterly_months:
-            filtered_snapshots[period] = commit_hash
+            filtered[period] = commit_hash
 
-    return sorted(filtered_snapshots.items(), key=lambda x: x[0])
+    return sorted(filtered.items(), key=lambda x: x[0])
 
 
-def _parse_blame_output(blame_output: str) -> dict[str, int]:
+def _resolve_worker_count() -> int:
     """
-    Parse git blame --line-porcelain output, returning a year -> line count mapping.
+    Determine the number of parallel blame workers.
 
-    :param blame_output: The raw output from git blame --line-porcelain
-    :return: A dictionary mapping years to the number of lines changed in that year
+    Default is ``min(8, cpu_count * 2)``.  Override via ``BLAME_WORKERS``
+    environment variable (clamped 1-100).
+
+    :return: Worker count (int).
     """
-    file_distribution = defaultdict(int)
-    commit_to_year = {}
-    current_commit = None
-
-    for line in blame_output.splitlines():
-        if line.startswith("\t"):
-            if current_commit and current_commit in commit_to_year:
-                year = commit_to_year[current_commit]
-                file_distribution[year] += 1
-        else:
-            parts = line.split(" ")
-            if len(parts[0]) in (40, 64):
-                current_commit = parts[0]
-            elif parts[0] == "author-time":
-                try:
-                    timestamp = int(parts[1])
-                    year = datetime.fromtimestamp(timestamp, timezone.utc).strftime(
-                        "%Y"
-                    )
-                    commit_to_year[current_commit] = year
-                except (ValueError, IndexError):
-                    pass
-
-    return dict(file_distribution)
-
-
-def _blame_single_file(repo_path: str, file: str) -> dict[str, int]:
-    """
-    Worker function to run git blame on a single file.
-    Designed to be run concurrently in a ThreadPool.
-    """
-    try:
-        blame_output = _run_command(
-            ["git", "blame", "--line-porcelain", file], cwd=repo_path
-        )
-        return _parse_blame_output(blame_output)
-    except RuntimeError:
-        return {}
-
-
-def analyze_snapshots(repo_path: str, commit_hash: str) -> dict[str, int]:
-    """
-    Analyze the snapshots collected from the repository.
-
-    :param repo_path: Path to the repository
-    :param commit_hash: Hash of the commit to analyze
-    :return: Dictionary mapping birth year to line count
-    """
-    _run_command(["git", "checkout", commit_hash], cwd=repo_path)
-    files_output = _run_command(["git", "ls-files"], cwd=repo_path)
-    files = files_output.splitlines()
-
-    age_distribution = defaultdict(int)
-
-    valid_files = [f for f in files if os.path.isfile(os.path.join(repo_path, f))]
-
-    # Safe BLAME_WORKERS parsing with fallback
-    max_workers = min(20, (os.cpu_count() or 1) * 2)
+    max_workers = min(8, (os.cpu_count() or 1) * 2)
     try:
         if "BLAME_WORKERS" in os.environ:
             max_workers = max(1, min(int(os.environ["BLAME_WORKERS"]), 100))
     except ValueError:
         pass
+    return max_workers
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_file = {
-            executor.submit(_blame_single_file, repo_path, file): file
-            for file in valid_files
-        }
 
-        for future in concurrent.futures.as_completed(future_to_file):
-            file_dist = future.result()
-            for year, count in file_dist.items():
-                age_distribution[year] += count
+def analyze_single_snapshot(repo_path: str, commit_hash: str) -> dict[str, int]:
+    """
+    Analyse a single snapshot commit and return its year-to-line-count distribution.
+
+    Checks out the commit, collects all tracked files, and runs parallel
+    ``git blame`` across them to determine how many lines were authored in
+    each year.
+
+    :param repo_path: Path to the git repository.
+    :param commit_hash: The commit (tag, branch, or hash) to analyse.
+    :return: ``{year: line_count}`` for this snapshot.
+    """
+    run_command(["git", "checkout", commit_hash], cwd=repo_path)
+    tracked_files = get_tracked_files(repo_path)
+    age_distribution: dict[str, int] = defaultdict(int)
+
+    max_workers = _resolve_worker_count()
+    distribution = blame_files_year_counts(repo_path, tracked_files, max_workers)
+    for year, count in distribution.items():
+        age_distribution[year] += count
 
     return dict(age_distribution)
 
 
-def load_existing_state(json_fname: str) -> dict:
+def _filter_snapshots(
+    all_periods: list[tuple[str, str]],
+    processed_periods: set[str],
+    reprocess: str | None = None,
+) -> list[tuple[str, str]]:
     """
-    Load the existing historical data supporting both old list and new object schemas.
+    Filter (period, commit) pairs down to those that need processing.
 
-    :param json_fname: Path to the existing JSON file containing the historical data.
-    :return: A dictionary with 'snapshots' and 'fossils'.
+    When *reprocess* is provided, that specific period is included even if it
+    was already processed.
+
+    :param all_periods: Full list of (period, commit) tuples.
+    :param processed_periods: Set of period strings already on disk.
+    :param reprocess: Optional ``YYYY-MM`` period to force re-processing.
+    :return: List of (period, commit) tuples that need processing.
     """
-    if os.path.exists(json_fname):
-        try:
-            with open(json_fname, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    return {"snapshots": data, "fossils": {}}
-                return data
-        except json.JSONDecodeError:
-            logger.warning("%s is corrupted, starting fresh.", json_fname)
-            return {"snapshots": [], "fossils": {}}
-    return {"snapshots": [], "fossils": {}}
+    result: list[tuple[str, str]] = []
+    for period, commit in all_periods:
+        if period not in processed_periods or (reprocess and period == reprocess):
+            result.append((period, commit))
+    return result
 
 
-def _atomic_write_json(
-    json_path: str, snapshots: list[dict], fossils: dict | None = None
+def process_repository(
+    repo_slug: str, data_dir: str, reprocess: str | None = None
 ) -> None:
-    """Write JSON data atomically and minified to prevent corruption and save space."""
-    tmp_path = json_path + ".tmp"
-    data = {"snapshots": snapshots, "fossils": fossils or {}}
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, separators=(",", ":"))
-    os.replace(tmp_path, json_path)
-
-
-def process_repository(repo_slug: str, data_dir: str) -> None:
-    # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """
-    Orchestrate the extraction of Ship of Theseus code persistence data
-    using an incremental load strategy by just processing the delta.
+    Process a single repository end-to-end.
 
-    Processes year-by-year and writes to disk after each year completes
-    to prevent data loss on crash.
+    Clones or updates the repo, then processes each new snapshot year-by-year,
+    writing intermediate results to disk after each year to prevent data loss
+    on crash.  Existing fossil data is preserved untouched.
 
-    Fossil data is NOT touched here — that is handled by add_fossils.py.
-
-    :param repo_slug: The GitHub repository identifier (e.g., 'facebook/react').
-    :param data_dir: Path where the resulting JSON data will be saved.
+    :param repo_slug: GitHub ``owner/name`` slug.
+    :param data_dir: Path to the ``data/`` output directory.
+    :param reprocess: Optional ``YYYY-MM`` period to force re-processing.
     """
     repo_name = repo_slug.split("/")[-1]
-    temp_repo_path = f"./temp_workdir_{repo_name}"
+    temp_repo_path = f"./temp_workdir_{repo_slug.replace('/', '__')}"
     output_json_path = os.path.join(data_dir, f"{repo_name}_data.json")
 
     try:
@@ -239,36 +182,36 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
             logger.info(
                 "Repository %s already exists locally. Fetching latest...", repo_name
             )
-            _run_command(["git", "fetch", "--all"], cwd=temp_repo_path)
-            for branch in ["main", "master"]:
-                try:
-                    _run_command(["git", "checkout", branch], cwd=temp_repo_path)
-                    break
-                except RuntimeError:
-                    continue
-            _run_command(["git", "pull"], cwd=temp_repo_path)
+            run_command(["git", "fetch", "--all"], cwd=temp_repo_path)
+            default_branch = get_default_branch(temp_repo_path)
+            if default_branch == "HEAD":
+                raise RuntimeError(
+                    f"[{repo_name}] Cannot determine default branch after fetch. "
+                    "Tried: main, master, develop, origin/HEAD."
+                )
+            run_command(
+                ["git", "checkout", "-B", default_branch, f"origin/{default_branch}"],
+                cwd=temp_repo_path,
+            )
+            run_command(["git", "pull"], cwd=temp_repo_path)
 
-        state = load_existing_state(output_json_path)
+        state = load_snapshot_data(output_json_path)
         historical_snapshots = state["snapshots"]
-        # Preserve any existing fossil data — do not touch it
         existing_fossils = state.get("fossils", {})
         processed_periods = set(item["snapshot_date"] for item in historical_snapshots)
 
-        all_snapshots = get_snapshots(temp_repo_path)
-        new_snapshots = [
-            (period, commit)
-            for period, commit in all_snapshots
-            if period not in processed_periods
-        ]
+        all_periods = get_snapshot_periods(temp_repo_path)
+        new_snapshots = _filter_snapshots(all_periods, processed_periods, reprocess)
 
         if not new_snapshots:
             logger.info(
-                "[%s] No new periods to process. Data is already up to date!", repo_name
+                "[%s] No new periods to process. Data is already up to date!",
+                repo_name,
             )
             return
 
         logger.info(
-            "[%s] Processing %d new snapshots with hybrid resolution (quarterly pre-2025, monthly 2025+)",
+            "[%s] Processing %d new snapshots (quarterly pre-2025, monthly 2025+)",
             repo_name,
             len(new_snapshots),
         )
@@ -290,7 +233,7 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
 
             for idx, (period, commit) in enumerate(year_snapshots_list, 1):
                 logger.info(
-                    "[%s] [%s] Processing %s (%d/%d) - Commit: %s",
+                    "[%s] [%s] Processing %s (%d/%d) — Commit: %s",
                     repo_name,
                     year,
                     period,
@@ -300,7 +243,7 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
                 )
 
                 snapshot_start = time.perf_counter()
-                distribution = analyze_snapshots(temp_repo_path, commit)
+                distribution = analyze_single_snapshot(temp_repo_path, commit)
                 snapshot_elapsed = time.perf_counter() - snapshot_start
 
                 logger.info(
@@ -325,11 +268,10 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
             final_snapshots = historical_snapshots + total_new_data
             final_snapshots.sort(key=lambda x: x["snapshot_date"])
 
-            # Write snapshot data, preserving existing fossil data untouched
-            _atomic_write_json(output_json_path, final_snapshots, existing_fossils)
+            save_snapshot_data(output_json_path, final_snapshots, existing_fossils)
 
             logger.info(
-                "[%s] Completed year %s in %.2f seconds. Wrote %d snapshots to disk.",
+                "[%s] Completed year %s in %.2f seconds. Wrote %d snapshots.",
                 repo_name,
                 year,
                 year_elapsed,
@@ -337,88 +279,99 @@ def process_repository(repo_slug: str, data_dir: str) -> None:
             )
 
     finally:
-        if os.path.exists(temp_repo_path):
-            logger.info("Cleaning up temporary directory: %s", temp_repo_path)
-            time.sleep(1)
+        from _utils import remove_path
 
-            def handle_remove_readonly(func, path, _exc_info):
-                """Handle permission errors on Windows/Unix by adding write permission."""
-                try:
-                    current_mode = os.stat(path).st_mode
-                    os.chmod(
-                        path, current_mode | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH
-                    )
-                    func(path)
-                except PermissionError as e:
-                    logger.warning("Permission error cleaning up %s: %s", path, e)
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    logger.warning("Error cleaning up %s: %s", path, e)
-
-            for attempt in range(3):
-                try:
-                    shutil.rmtree(temp_repo_path, onexc=handle_remove_readonly)
-                    break
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    if attempt < 2:
-                        time.sleep(1)
-                        logger.warning("Cleanup attempt %d failed: %s", attempt + 1, e)
-                    else:
-                        logger.error(
-                            "Failed to clean up temporary directory after 3 attempts: %s",
-                            e,
-                        )
+        remove_path(temp_repo_path)
 
 
-def main():
+def main() -> None:
     """
-    Main entry point. Loads configuration, creates output directory,
-    and runs the repository analysis pipeline for all specified targets.
+    Entry point for the snapshot-analysis pipeline.
+
+    CLI flags
+    ---------
+    --repo NAME         Process only the given repository (by config name).
+    --reprocess YYYY-MM Re-process a specific snapshot period even if it already
+                        exists on disk.
     """
+    parser = argparse.ArgumentParser(
+        description="Analyse repository git history for the Ship of Theseus pipeline."
+    )
+    parser.add_argument(
+        "--repo",
+        metavar="NAME",
+        default=None,
+        help="Only process this repository (e.g. 'react'). If omitted, all repos are processed.",
+    )
+    parser.add_argument(
+        "--reprocess",
+        metavar="YYYY-MM",
+        default=None,
+        help="Re-process a specific snapshot period (e.g. '2023-06').",
+    )
+    args = parser.parse_args()
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    config_path = "theseus.config.json"
-    if not os.path.exists(config_path):
-        logger.error("Configuration file not found: %s", config_path)
-        sys.exit(1)
+    config = load_config()
+    data_output_dir = config.get("dataDir", "./data")
+    os.makedirs(data_output_dir, exist_ok=True)
 
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = json.load(f)
-
-    DATA_OUTPUT_DIR = config.get("dataDir", "./data")
-    os.makedirs(DATA_OUTPUT_DIR, exist_ok=True)
-
-    TARGETS = [
-        repo["repo"] for repo in config.get("repositories", []) if "repo" in repo
-    ]
-    if not TARGETS:
+    all_targets: dict[str, str] = {
+        repo["name"]: repo["repo"]
+        for repo in config.get("repositories", [])
+        if "name" in repo and "repo" in repo
+    }
+    if not all_targets:
         logger.error("No valid repositories found in configuration.")
         sys.exit(1)
 
-    # Bound top-level workers by CPU count
+    if args.repo:
+        if args.repo not in all_targets:
+            logger.error(
+                "Unknown repository '%s'. Valid options: %s",
+                args.repo,
+                ", ".join(all_targets),
+            )
+            sys.exit(1)
+        selected_targets = {args.repo: all_targets[args.repo]}
+        logger.info("Processing single repository: %s", args.repo)
+    else:
+        selected_targets = all_targets
+        logger.info("Processing %d repositories", len(selected_targets))
+
+    if args.reprocess:
+        logger.info("Re-processing period: %s", args.reprocess)
+
+    import concurrent.futures
+
     max_top_level_workers = min(
-        len(TARGETS), int(os.getenv("MAX_TOP_LEVEL_WORKERS", os.cpu_count() or 1))
+        len(selected_targets),
+        int(os.getenv("MAX_TOP_LEVEL_WORKERS", os.cpu_count() or 1)),
     )
 
     overall_start = time.perf_counter()
-    logger.info("Starting analysis pipeline for %d repositories", len(TARGETS))
 
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=max_top_level_workers
     ) as executor:
         futures = {
-            executor.submit(process_repository, target, DATA_OUTPUT_DIR): target
-            for target in TARGETS
+            executor.submit(
+                process_repository, slug, data_output_dir, args.reprocess
+            ): name
+            for name, slug in selected_targets.items()
         }
         for future in concurrent.futures.as_completed(futures):
-            target = futures[future]
+            name = futures[future]
             try:
                 future.result()
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                logger.error("Failed to process %s: %s", target, e)
+                logger.info("✓ %s completed successfully.", name)
+            except Exception as e:  # noqa: BLE001
+                logger.error("Failed to process %s: %s", name, e)
 
     overall_elapsed = time.perf_counter() - overall_start
     logger.info("TOTAL PIPELINE EXECUTION TIME: %.2f seconds", overall_elapsed)
