@@ -57,7 +57,7 @@ def cleanup_data(data_dir: str) -> bool:
                     max_year = int(snapshot_date[:4])
                     composition = snapshot.get("composition", {})
                     keys_to_remove = [
-                         year for year in composition.keys() if int(year) > max_year
+                        year for year in composition.keys() if int(year) > max_year
                     ]
                     for key in keys_to_remove:
                         del composition[key]
@@ -78,12 +78,14 @@ def cleanup_data(data_dir: str) -> bool:
 
     return had_failures
 
+
 def main():
     config = load_config()
     data_dir = config.get("dataDir", "./data")
     if cleanup_data(data_dir):
         print("One or more files failed to clean up. Exiting non-zero.")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

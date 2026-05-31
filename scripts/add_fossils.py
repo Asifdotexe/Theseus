@@ -32,7 +32,7 @@ _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
-from _utils import get_default_branch, run_command, load_config, remove_path
+from _utils import get_default_branch, load_config, remove_path, run_command
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,11 @@ def _blame_file(repo_path: str | Path, file_path: str, view_commit: str = "") ->
                 fossil["line"] = line_num
         else:
             parts = line.split(" ")
-            if parts and len(parts[0]) in (40, 64) and all(c in "0123456789abcdef" for c in parts[0].lower()):
+            if (
+                parts
+                and len(parts[0]) in (40, 64)
+                and all(c in "0123456789abcdef" for c in parts[0].lower())
+            ):
                 current_commit_data = {"commit": parts[0]}
             elif line.startswith("author-time ") and len(parts) >= 2:
                 try:
@@ -99,7 +103,10 @@ def _blame_file(repo_path: str | Path, file_path: str, view_commit: str = "") ->
 
 
 def _blame_files_parallel(
-    repo_path: str | Path, files: list[str], view_commit: str = "", max_workers: int = 20
+    repo_path: str | Path,
+    files: list[str],
+    view_commit: str = "",
+    max_workers: int = 20,
 ) -> dict:
     """Blame a list of files in parallel and return the single oldest fossil found."""
     global_oldest = _blank_fossil()
