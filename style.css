@@ -452,7 +452,6 @@ svg#main-chart rect[tabindex="0"]:focus {
     min-width: 340px;
     max-width: min(340px, 90vw);
     overflow-wrap: break-word;
-    word-break: break-word;
     box-shadow: 0 30px 60px oklch(0% 0 0 / 0.8);
     opacity: 0;
     visibility: hidden;
