@@ -277,7 +277,8 @@ class TheseusVisualizer {
       }
       this.repoDescription.textContent = repoInfo.description || "";
 
-      const response = await fetch(`data/${repoInfo.file}`, { signal });
+      const dataFile = repoInfo.file || `${repoInfo.name}_data.json`;
+      const response = await fetch(`data/${dataFile}`, { signal });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const rawData = await response.json();
 

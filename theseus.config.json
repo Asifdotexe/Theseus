@@ -3,7 +3,6 @@
   "repositories": [
     {
       "name": "langchain",
-      "file": "langchain_data.json",
       "description": "Framework for developing LLM-driven applications and agents.",
       "repo": "langchain-ai/langchain",
       "milestones": [
@@ -21,7 +20,6 @@
     },
     {
       "name": "react",
-      "file": "react_data.json",
       "description": "Component-based JavaScript library for building user interfaces.",
       "repo": "facebook/react",
       "milestones": [
@@ -49,7 +47,6 @@
     },
     {
       "name": "numpy",
-      "file": "numpy_data.json",
       "description": "The fundamental package for scientific computing in Python.",
       "repo": "numpy/numpy",
       "milestones": [
@@ -72,7 +69,6 @@
     },
     {
       "name": "zed",
-      "file": "zed_data.json",
       "description": "High-performance, GPU-accelerated code editor for teamwork.",
       "repo": "zed-industries/zed",
       "milestones": [
@@ -84,8 +80,13 @@
       ]
     },
     {
+      "name": "tensorflow",
+      "description": "TensorFlow: Open-source machine learning framework.",
+      "repo": "tensorflow/tensorflow",
+      "milestones": []
+    },
+    {
       "name": "claude-code",
-      "file": "claude-code_data.json",
       "description": "Claude's agentic CLI tool for local coding tasks.",
       "repo": "anthropics/claude-code",
       "milestones": [
