@@ -1244,6 +1244,64 @@ svg#main-chart rect[tabindex="0"]:focus {
     border-color: var(--ember);
 }
 
+@media (max-width: 639px) {
+    .visualization-canvas {
+        min-height: auto;
+        aspect-ratio: 4 / 3;
+    }
+
+    svg#main-chart {
+        min-height: auto;
+    }
+
+    .noise-overlay {
+        opacity: 0;
+    }
+
+    .selector-pill {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .selector-pill::-webkit-scrollbar {
+        display: none;
+    }
+
+    .settings-group .control-label {
+        display: none;
+    }
+
+    .insight-card {
+        padding: var(--space-md);
+        border-radius: var(--radius-md);
+    }
+
+    .fossil-card {
+        padding: var(--space-sm) var(--space-md);
+    }
+
+    .repo-request,
+    .fossil-finder {
+        padding: var(--space-md);
+    }
+
+    .repo-request-submit {
+        width: 100%;
+    }
+}
+
+@media (min-width: 640px) and (max-width: 1023px) {
+    .visualization-canvas {
+        min-height: auto;
+        aspect-ratio: 16 / 9;
+    }
+
+    svg#main-chart {
+        min-height: auto;
+    }
+}
+
 @media (max-width: 480px) {
     .repo-request-input {
         width: 100%;
@@ -1256,6 +1314,17 @@ svg#main-chart rect[tabindex="0"]:focus {
 
     .repo-request-submit {
         width: 100%;
+    }
+}
+
+@media (max-height: 480px) and (orientation: landscape) {
+    .visualization-canvas {
+        min-height: auto;
+        aspect-ratio: 16 / 9;
+    }
+
+    svg#main-chart {
+        min-height: auto;
     }
 }
 
@@ -1275,6 +1344,17 @@ svg#main-chart rect[tabindex="0"]:focus {
     .help-icon {
         width: 44px;
         height: 44px;
+    }
+
+    .repo-btn:active,
+    .mode-btn:active,
+    .scale-btn:active {
+        background: oklch(100% 0 0 / 0.08);
+    }
+
+    .fossil-card:active,
+    .insight-card:active {
+        transform: scale(0.98);
     }
 }
 
