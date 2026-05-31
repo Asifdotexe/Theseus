@@ -41,7 +41,7 @@
           "description": "Introduced Hooks for state management without classes."
         },
         {
-          "date": "2024-06",
+          "date": "2024-12",
           "title": "React 19 major update",
           "description": "Added Server Components and new form handling."
         }

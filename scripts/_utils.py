@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -160,25 +161,23 @@ def remove_path(path: str) -> None:
         except (subprocess.SubprocessError, OSError):
             pass
 
-    # Fallback: retry with shutil.rmtree
+    # Fallback: retry with shutil.rmtree, fixing permissions on each retry
+    def handle_remove_readonly(func, path, _exc_info):
+        try:
+            current_mode = os.stat(path).st_mode
+            os.chmod(
+                path,
+                current_mode | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH,
+            )
+            func(path)
+        except PermissionError:
+            pass
+        except Exception:  # noqa: BLE001
+            pass
+
     for attempt in range(3):
         try:
-            shutil.rmtree(path, ignore_errors=False)
-
-            def handle_remove_readonly(func, path, _exc_info):
-                try:
-                    current_mode = os.stat(path).st_mode
-                    os.chmod(
-                        path,
-                        current_mode | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH,
-                    )
-                    func(path)
-                except PermissionError:
-                    pass
-                except Exception:  # noqa: BLE001
-                    pass
-
-            shutil.rmtree(path, onexc=handle_remove_readonly)
+            shutil.rmtree(path, onerror=handle_remove_readonly)
             break
         except Exception:  # noqa: BLE001
             if attempt < 2:
