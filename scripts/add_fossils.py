@@ -289,9 +289,7 @@ def backfill_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
     :param repo_urls: ``{repo_name: clone_url}`` mapping.
     :return: ``True`` if any errors occurred, ``False`` otherwise.
     """
-    data_path = Path(data_dir)
-    temp_dir = Path("./temp_fossil_repos")
-    temp_dir.mkdir(exist_ok=True)
+    data_path = Path(data_dir) / "raw"
     had_failures = False
 
     for json_file in sorted(data_path.glob("*.json")):
@@ -312,7 +310,10 @@ def backfill_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
             logger.warning("  No snapshots found in %s, skipping.", json_file.name)
             continue
 
-        local_repo = temp_dir / repo_name
+        temp_dir = Path(f"./temp_fossil_repos_{repo_name}")
+        temp_dir.mkdir(exist_ok=True)
+        local_repo = temp_dir
+
         if not local_repo.exists():
             logger.info("  Cloning %s...", repo_url)
             run_command(["git", "clone", repo_url, str(local_repo)])
@@ -361,8 +362,8 @@ def backfill_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
             logger.error("  ✗ Error computing fossils for %s: %s", repo_name, e)
             had_failures = True
 
-    if temp_dir.exists():
-        remove_path(str(temp_dir))
+        if temp_dir.exists():
+            remove_path(str(temp_dir))
 
     return had_failures
 
@@ -384,9 +385,7 @@ def update_survivor_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
     :param repo_urls: ``{repo_name: clone_url}`` mapping.
     :return: ``True`` if any errors occurred, ``False`` otherwise.
     """
-    data_path = Path(data_dir)
-    temp_dir = Path("./temp_fossil_repos")
-    temp_dir.mkdir(exist_ok=True)
+    data_path = Path(data_dir) / "raw"
 
     updated_count = 0
     had_failures = False
@@ -413,7 +412,10 @@ def update_survivor_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
 
         existing_survivor = existing_fossils.get("survivor", {})
 
-        local_repo = temp_dir / repo_name
+        temp_dir = Path(f"./temp_fossil_repos_{repo_name}")
+        temp_dir.mkdir(exist_ok=True)
+        local_repo = temp_dir
+
         if not local_repo.exists():
             logger.info("  Cloning %s...", repo_url)
             run_command(["git", "clone", repo_url, str(local_repo)])
@@ -465,8 +467,8 @@ def update_survivor_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
             logger.error("  ✗ Error updating survivor for %s: %s", repo_name, e)
             had_failures = True
 
-    if temp_dir.exists():
-        remove_path(str(temp_dir))
+        if temp_dir.exists():
+            remove_path(str(temp_dir))
 
     logger.info("\nSurvivor update complete. %d repo(s) updated.", updated_count)
     return had_failures

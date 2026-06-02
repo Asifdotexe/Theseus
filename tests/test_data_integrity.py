@@ -13,7 +13,7 @@ def test_data_integrity_optimized_schema():
     2. No future-year keys in 'composition'
     3. Supports both list and object schemas (backwards compatibility)
     """
-    data_dir = Path("./data")
+    data_dir = Path("./data/processed")
     json_files = list(data_dir.glob("*.json"))
 
     json_files = [f for f in json_files if f.name != "manifest.json"]

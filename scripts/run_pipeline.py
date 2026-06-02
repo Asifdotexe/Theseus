@@ -58,6 +58,8 @@ def run_pipeline(
     config = load_config()
     data_dir = config.get("dataDir", "./data")
     os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(os.path.join(data_dir, "raw"), exist_ok=True)
+    os.makedirs(os.path.join(data_dir, "processed"), exist_ok=True)
 
     # Build target lists from config
     all_repos: list[dict] = config.get("repositories", [])

@@ -299,7 +299,7 @@ def process_repository(
     """
     repo_name = repo_slug.split("/")[-1]
     temp_repo_path = f"./temp_workdir_{repo_slug.replace('/', '__')}"
-    output_json_path = os.path.join(data_dir, f"{repo_name}_data.json")
+    output_json_path = os.path.join(data_dir, "raw", f"{repo_name}_data.json")
 
     try:
         if not os.path.exists(temp_repo_path):
