@@ -6,39 +6,70 @@ on:
   workflow_dispatch:
 
 jobs:
-  analyze_codebase:
+  discover-repos:
+    runs-on: ubuntu-latest
+    outputs:
+      repos: ${{ steps.extract.outputs.repos }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: extract
+        run: |
+          REPOS=$(python -c "
+import json
+with open('theseus.config.json') as f:
+    config = json.load(f)
+names = [r['name'] for r in config.get('repositories', [])]
+print(json.dumps(names))
+")
+          echo "repos=$REPOS" >> "$GITHUB_OUTPUT"
+
+  analyze:
+    needs: discover-repos
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo: ${{ fromJSON(needs.discover-repos.outputs.repos) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python and Poetry
+        uses: ./.github/actions/setup-python-poetry
+        with:
+          poetry-install-args: --no-interaction --no-root
+
+      - name: Run pipeline for ${{ matrix.repo }}
+        run: poetry run python scripts/run_pipeline.py --repo ${{ matrix.repo }} --update-survivor
+        timeout-minutes: 120
+
+      - name: Upload data artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-${{ matrix.repo }}
+          path: |
+            data/raw/${{ matrix.repo }}_data.json
+            data/processed/${{ matrix.repo }}_graph.json
+
+  create-pr:
+    needs: analyze
+    if: always()
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
+          pattern: data-*
+          merge-multiple: true
 
-      - name: Setup python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install poetry
-        run: pipx install poetry
-
-      - name: Install dependencies
-        run: poetry install --no-interaction --no-root
-
-      - name: Run theseus data pipeline (snapshots → survivor → cleanup)
-        run: |
-          # Analyse new snapshot periods, refresh survivor fossils, and clean/minify
-          # all data payloads.  Genesis (historical fossil) is left untouched
-          # during monthly cron runs.
-          poetry run python scripts/run_pipeline.py --update-survivor
-
-      - name: Create pull request for data updates
-        if: success()
-        uses: peter-evans/create-pull-request@b1ddad2c994a25fbc81a28b3ec0e368bb2021c50 # v6.0.0
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@b1ddad2c994a25fbc81a28b3ec0e368bb2021c50
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "chore: update theseus persistence data across all repos"

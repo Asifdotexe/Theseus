@@ -15,16 +15,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Setup Python and Poetry
+        uses: ./.github/actions/setup-python-poetry
         with:
-          python-version: "3.12"
+          poetry-install-args: --with dev
 
-      - name: Install Poetry
-        run: pipx install poetry
-
-      - name: Install dependencies
-        run: poetry install --with dev
+      - name: Run linter
+        run: poetry run pylint scripts/ --output-format=colorized
+        continue-on-error: true
 
       - name: Run tests
         run: poetry run pytest tests/ -v --tb=short
