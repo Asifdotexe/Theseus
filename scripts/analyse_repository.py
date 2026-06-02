@@ -36,9 +36,16 @@ _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
-from _blame import blame_files_year_counts
+from _blame import BlameRunner
 from _data_io import load_snapshot_data, save_snapshot_data
-from _utils import get_default_branch, get_tracked_files, load_config, run_command
+from _utils import (
+    count_repo_lines,
+    get_changed_files,
+    get_default_branch,
+    get_tracked_files,
+    load_config,
+    run_command,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,28 +117,147 @@ def _resolve_worker_count() -> int:
     return max_workers
 
 
-def analyze_single_snapshot(repo_path: str, commit_hash: str) -> dict[str, int]:
+def _blame_full_snapshot(
+    repo_path: str, max_workers: int
+) -> dict[str, dict[str, int]]:
+    """
+    Full blame of all tracked files at the current checkout.
+
+    :param repo_path: Path to the git repository.
+    :param max_workers: Maximum parallel blame processes.
+    :return: ``{file_path: {year: count}}``.
+    """
+    tracked_files = get_tracked_files(repo_path)
+    return BlameRunner(repo_path, max_workers).blame_file_compositions(tracked_files)
+
+
+def _blame_incremental_snapshot(
+    repo_path: str,
+    commit_hash: str,
+    prev_commit: str,
+    prev_compositions: dict[str, dict[str, int]],
+    max_workers: int,
+) -> dict[str, dict[str, int]]:
+    """
+    Incremental blame via ``git diff-tree`` + carry-forward of unchanged files.
+
+    Between consecutive snapshot commits typically <10% of files change.
+    Instead of blaming every tracked file, only the differing files are
+    blamed; unchanged files carry forward their previous results verbatim
+    (blame is deterministic for identical file content).
+
+    :param repo_path: Path to the git repository.
+    :param commit_hash: The target commit to analyze.
+    :param prev_commit: The previous snapshot commit for diffing.
+    :param prev_compositions: Previous snapshot's ``{file: {year: count}}``.
+    :param max_workers: Maximum parallel blame processes.
+    :return: ``{file_path: {year: count}}``.
+    """
+    changed_files = get_changed_files(repo_path, prev_commit, commit_hash)
+    if not changed_files:
+        return {k: dict(v) for k, v in prev_compositions.items()}
+
+    file_compositions = {
+        k: dict(v) for k, v in prev_compositions.items() if k not in changed_files
+    }
+    new_compositions = BlameRunner(
+        repo_path, max_workers
+    ).blame_file_compositions(changed_files)
+    file_compositions.update(new_compositions)
+    return file_compositions
+
+
+def _aggregate_file_compositions(
+    file_compositions: dict[str, dict[str, int]]
+) -> dict[str, int]:
+    """
+    Sum per-file ``{year: count}`` maps into a single ``{year: count}``.
+
+    :param file_compositions: ``{file_path: {year: count}}``.
+    :return: ``{year: total_count}``.
+    """
+    age_distribution: dict[str, int] = defaultdict(int)
+    for f_data in file_compositions.values():
+        for year, count in f_data.items():
+            age_distribution[year] += count
+    return dict(age_distribution)
+
+
+def _verify_line_count_guard(
+    repo_path: str,
+    age_distribution: dict[str, int],
+    file_compositions: dict[str, dict[str, int]],
+    max_workers: int,
+) -> tuple[dict[str, int], dict[str, dict[str, int]]]:
+    """
+    Verify blame total against ``wc -l``; fall back to full blame on >1 % mismatch.
+
+    If the incremental blame missed a changed file or carried forward stale
+    data, the totals will diverge and we re-process with a full blame —
+    ensuring correctness even if the incremental logic has a bug.
+
+    :param repo_path: Path to the git repository.
+    :param age_distribution: Current ``{year: count}`` estimate.
+    :param file_compositions: Current ``{file: {year: count}}``.
+    :param max_workers: Maximum parallel blame processes.
+    :return: ``(age_distribution, file_compositions)``, possibly from a full
+             re-blame if the check failed.
+    """
+    blame_total = sum(age_distribution.values())
+    disk_total = count_repo_lines(repo_path)
+    if disk_total <= 0:
+        return age_distribution, file_compositions
+
+    diff_pct = abs(blame_total - disk_total) / disk_total * 100
+    if diff_pct <= 1:
+        return age_distribution, file_compositions
+
+    logger.warning(
+        "Line count mismatch: blame=%d vs disk=%d (%.1f%%). "
+        "Falling back to full blame.",
+        blame_total,
+        disk_total,
+        diff_pct,
+    )
+    file_compositions = _blame_full_snapshot(repo_path, max_workers)
+    return _aggregate_file_compositions(file_compositions), file_compositions
+
+
+def analyze_single_snapshot(
+    repo_path: str,
+    commit_hash: str,
+    prev_file_data: tuple[str, dict[str, dict[str, int]]] | None = None,
+) -> tuple[dict[str, int], dict[str, dict[str, int]]]:
     """
     Analyse a single snapshot commit and return its year-to-line-count distribution.
 
-    Checks out the commit, collects all tracked files, and runs parallel
-    ``git blame`` across them to determine how many lines were authored in
-    each year.
+    When *prev_file_data* ``(prev_commit, {file: {year: count}})`` is provided,
+    uses an incremental strategy (see ``_blame_incremental_snapshot``).
+    When *prev_file_data* is ``None``, blames every tracked file (baseline).
 
     :param repo_path: Path to the git repository.
-    :param commit_hash: The commit (tag, branch, or hash) to analyse.
-    :return: ``{year: line_count}`` for this snapshot.
+    :param commit_hash: The commit (tag, branch, or hash) to analyze.
+    :param prev_file_data: Optional ``(prev_commit, {file: {year: count}})``
+        from the previous snapshot for incremental blame.
+    :return: ``(age_distribution, file_compositions)`` where
+        ``age_distribution`` is ``{year: line_count}`` and
+        ``file_compositions`` is ``{file_path: {year: count}}``.
     """
     run_command(["git", "checkout", commit_hash], cwd=repo_path)
-    tracked_files = get_tracked_files(repo_path)
-    age_distribution: dict[str, int] = defaultdict(int)
-
     max_workers = _resolve_worker_count()
-    distribution = blame_files_year_counts(repo_path, tracked_files, max_workers)
-    for year, count in distribution.items():
-        age_distribution[year] += count
 
-    return dict(age_distribution)
+    file_compositions = (
+        _blame_incremental_snapshot(
+            repo_path, commit_hash, *prev_file_data, max_workers
+        )
+        if prev_file_data
+        else _blame_full_snapshot(repo_path, max_workers)
+    )
+    age_distribution = _aggregate_file_compositions(file_compositions)
+    age_distribution, file_compositions = _verify_line_count_guard(
+        repo_path, age_distribution, file_compositions, max_workers
+    )
+    return dict(age_distribution), file_compositions
 
 
 def _filter_snapshots(
@@ -173,7 +299,7 @@ def process_repository(
     """
     repo_name = repo_slug.split("/")[-1]
     temp_repo_path = f"./temp_workdir_{repo_slug.replace('/', '__')}"
-    output_json_path = os.path.join(data_dir, f"{repo_name}_data.json")
+    output_json_path = os.path.join(data_dir, "raw", f"{repo_name}_data.json")
 
     try:
         if not os.path.exists(temp_repo_path):
@@ -219,6 +345,20 @@ def process_repository(
         snapshots_by_year = groupby(new_snapshots, key=lambda x: x[0][:4])
         total_new_data = []
 
+        # Find the previous snapshot for incremental blame baseline
+        prev_file_data: tuple[str, dict[str, dict[str, int]]] | None = None
+        if historical_snapshots:
+            last_hist = historical_snapshots[-1]
+            hist_commit = last_hist.get("commit_hash", "")
+            hist_compositions = last_hist.get("file_compositions")
+            if hist_commit and hist_compositions:
+                prev_file_data = (hist_commit, hist_compositions)
+                logger.info(
+                    "[%s] Using incremental blame from %s",
+                    repo_name,
+                    last_hist["snapshot_date"],
+                )
+
         for year, year_snapshots in snapshots_by_year:
             year_snapshots_list = list(year_snapshots)
             year_data = []
@@ -243,8 +383,13 @@ def process_repository(
                 )
 
                 snapshot_start = time.perf_counter()
-                distribution = analyze_single_snapshot(temp_repo_path, commit)
+                distribution, file_compositions = analyze_single_snapshot(
+                    temp_repo_path, commit, prev_file_data
+                )
                 snapshot_elapsed = time.perf_counter() - snapshot_start
+
+                # Prepare prev_file_data for the next iteration
+                prev_file_data = (commit, file_compositions)
 
                 logger.info(
                     "[%s] [%s] Completed %s in %.2f seconds (%d total lines)",
@@ -258,7 +403,9 @@ def process_repository(
                 year_data.append(
                     {
                         "snapshot_date": period,
+                        "commit_hash": commit,
                         "composition": distribution,
+                        "file_compositions": file_compositions,
                     }
                 )
 

@@ -213,3 +213,4 @@ __marimo__/
 .dev.vars*
 !.dev.vars.example
 !.env.example
+presentation/
