@@ -30,7 +30,7 @@ The `repositories` array takes objects consisting of the following key attribute
 
 | Key | Type | Description | Example |
 | :--- | :---: | :--- | :--- |
-| `name` | *String* | A safe, unique identifier. Used as the repo slug (`--repo NAME`) and as the data filename (`{name}_data.json`). Must be kebab-case. | `"django"` |
+| `name` | *String* | A safe, unique identifier. Used as the repo slug (`--repo NAME`) and as the data filenames — `data/raw/{name}_data.json` (raw with blame metadata) and `data/processed/{name}_graph.json` (graph for frontend). Must be kebab-case. | `"django"` |
 | `repo` | *String* | The GitHub repository namespace. The engine resolves this to `https://github.com/owner/repo.git`. | `"django/django"` |
 | `description` | *String* | A short UI subheading clarifying what the project is. | `"The web framework for perfectionists with deadlines."` |
 | `milestones` | *Array* | An optional list of significant events to display on the timeline. | `[{"date": "2024-01", "title": "Launch"}]` |
@@ -75,10 +75,14 @@ Then run the pipeline to generate the data:
 python scripts/run_pipeline.py --repo REPO-NAME
 ```
 
-This single command clones the repository, runs quarterly/monthly snapshot analysis, discovers both genesis and survivor fossils, and writes `data/REPO-NAME_data.json`. The frontend auto-discovers the new data — no additional changes needed.
+This single command clones the repository, runs quarterly/monthly snapshot analysis, discovers both genesis and survivor fossils, and writes two files:
+- `data/raw/{name}_data.json` — master data with per-file blame metadata (pipeline state)
+- `data/processed/{name}_graph.json` — cleaned graph data for the frontend (only `snapshot_date` + `composition` per entry)
+
+The frontend auto-discovers the new data from `data/processed/` — no additional changes needed.
 
 > [!NOTE]
-> The data filename is derived from `name` as `{name}_data.json`. There is no `file` field to maintain.
+> Data filenames are derived from `name`: `data/raw/{name}_data.json` and `data/processed/{name}_graph.json`. There is no `file` field to maintain.
 
 > [!CAUTION]
 > Avoid modifying the output data within `data/` manually. Doing so can corrupt the incremental snapshot cache, forcing a full re-clone and re-analysis.
