@@ -14,14 +14,13 @@ jobs:
       - uses: actions/checkout@v4
       - id: extract
         run: |
-          REPOS=$(python << 'EOF'
-import json
-with open('theseus.config.json') as f:
-    config = json.load(f)
-names = [r['name'] for r in config.get('repositories', [])]
-print(json.dumps(names))
-EOF
-)
+          REPOS=$(python -c '
+          import json
+          with open("theseus.config.json") as f:
+              config = json.load(f)
+          names = [r["name"] for r in config.get("repositories", [])]
+          print(json.dumps(names))
+          ')
           echo "repos=$REPOS" >> "$GITHUB_OUTPUT"
 
   analyze:
