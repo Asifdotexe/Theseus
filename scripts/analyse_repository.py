@@ -190,11 +190,12 @@ def _verify_line_count_guard(
     max_workers: int,
 ) -> tuple[dict[str, int], dict[str, dict[str, int]]]:
     """
-    Verify blame total against ``wc -l``; fall back to full blame on >1 % mismatch.
+    Verify blame total against ``wc -l``; fall back to full blame on mismatch.
 
-    If the incremental blame missed a changed file or carried forward stale
-    data, the totals will diverge and we re-process with a full blame —
-    ensuring correctness even if the incremental logic has a bug.
+    Tolerance is 1 % for repos under 50k lines and 5 % for larger repos.
+    Empirical data shows that larger repos (react, zed) regularly see 3-5 %
+    mismatch from binary/generated files that blame skips, so the relaxed
+    threshold avoids unnecessary full re-blames.
 
     :param repo_path: Path to the git repository.
     :param age_distribution: Current ``{year: count}`` estimate.
@@ -208,8 +209,9 @@ def _verify_line_count_guard(
     if disk_total <= 0:
         return age_distribution, file_compositions
 
+    threshold = 1.0 if disk_total < 50000 else 5.0
     diff_pct = abs(blame_total - disk_total) / disk_total * 100
-    if diff_pct <= 1:
+    if diff_pct <= threshold:
         return age_distribution, file_compositions
 
     logger.warning(

@@ -5,6 +5,10 @@ on:
     - cron: "0 0 1 * *"
   workflow_dispatch:
 
+concurrency:
+  group: theseus-data-engine
+  cancel-in-progress: false
+
 jobs:
   discover-repos:
     runs-on: ubuntu-latest
@@ -41,48 +45,186 @@ jobs:
           poetry-install-args: --no-interaction --no-root
 
       - name: Run pipeline for ${{ matrix.repo }}
+        continue-on-error: true
         run: poetry run python scripts/run_pipeline.py --repo ${{ matrix.repo }} --update-survivor
         timeout-minutes: 120
 
-      - name: Upload data artifacts
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: data-${{ matrix.repo }}
-          path: |
-            data/raw/${{ matrix.repo }}_data.json
-            data/processed/${{ matrix.repo }}_graph.json
+      - name: Push data to shared branch
+        run: |
+          STATUS="success"
+          RAW_FILE="data/raw/${{ matrix.repo }}_data.json"
+          GRAPH_FILE="data/processed/${{ matrix.repo }}_graph.json"
+          [ -f "$RAW_FILE" ] || STATUS="failure"
+
+          mkdir -p /tmp/data-save
+
+          if [ -f "$RAW_FILE" ]; then
+            cp "$RAW_FILE" /tmp/data-save/
+          fi
+          if [ -f "$GRAPH_FILE" ]; then
+            cp "$GRAPH_FILE" /tmp/data-save/
+          fi
+
+          echo "{\"repo\": \"${{ matrix.repo }}\", \"status\": \"$STATUS\", \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+            > /tmp/data-save/status.json
+
+          git fetch origin chore/monthly-data-update 2>/dev/null || true
+          if git show-ref --verify refs/remotes/origin/chore/monthly-data-update 2>/dev/null; then
+            git checkout chore/monthly-data-update
+          else
+            git checkout --orphan chore/monthly-data-update
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          mkdir -p data/raw data/processed data/.status
+          if [ -f "/tmp/data-save/${{ matrix.repo }}_data.json" ]; then
+            cp "/tmp/data-save/${{ matrix.repo }}_data.json" data/raw/
+          fi
+          if [ -f "/tmp/data-save/${{ matrix.repo }}_graph.json" ]; then
+            cp "/tmp/data-save/${{ matrix.repo }}_graph.json" data/processed/
+          fi
+          cp "/tmp/data-save/status.json" "data/.status/${{ matrix.repo }}.json"
+
+          git add data/
+          if git diff --cached --quiet; then
+            echo "No changes for ${{ matrix.repo }}, skipping commit"
+            exit 0
+          fi
+
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "chore: update ${{ matrix.repo }} persistence data"
+
+          for attempt in 1 2 3 4 5; do
+            if git push origin chore/monthly-data-update 2>/dev/null; then
+              echo "Push successful (attempt $attempt)"
+              exit 0
+            fi
+            echo "Push failed (attempt $attempt), rebasing..."
+            sleep $((attempt * 5))
+            git fetch origin chore/monthly-data-update
+            git rebase origin/chore/monthly-data-update
+          done
+          echo "Push failed after 5 attempts"
+          exit 1
 
   create-pr:
     needs: analyze
-    if: success()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
         with:
-          pattern: data-*
-          merge-multiple: true
+          fetch-depth: 0
 
-      - name: Create pull request
-        uses: peter-evans/create-pull-request@b1ddad2c994a25fbc81a28b3ec0e368bb2021c50
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore: update theseus persistence data across all repos"
-          author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
-          branch: "chore/monthly-data-update"
-          delete-branch: true
-          title: "chore: monthly theseus data pipeline update"
-          body: |
-            ## Automated Theseus Data Engine Run
+      - name: Fetch and checkout shared branch
+        id: shared
+        run: |
+          git fetch origin chore/monthly-data-update 2>/dev/null || true
+          if git show-ref --verify refs/remotes/origin/chore/monthly-data-update 2>/dev/null; then
+            git checkout chore/monthly-data-update
+            echo "has_branch=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_branch=false" >> "$GITHUB_OUTPUT"
+          fi
 
-            This pull request contains the latest pre-computed persistence data, minified payloads, and fossil updates for the tracked repositories.
+      - name: Check for status markers
+        id: check
+        if: steps.shared.outputs.has_branch == 'true'
+        run: |
+          if [ -d "data/.status" ] && compgen -G "data/.status/*.json" > /dev/null 2>&1; then
+            echo "has_data=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_data=false" >> "$GITHUB_OUTPUT"
+          fi
 
-            **Trigger:** Monthly Schedule / Workflow Dispatch
-            **Action:** Deltas calculated and fossils verified.
-          labels: "automated pr, data update"
+      - name: Build PR body
+        if: steps.check.outputs.has_data == 'true'
+        run: |
+          python << 'PYEOF'
+          import json, os, glob
+
+          status_dir = "data/.status"
+          statuses = {}
+          for f in sorted(glob.glob(os.path.join(status_dir, "*.json"))):
+              with open(f) as fh:
+                  s = json.load(fh)
+                  statuses[s["repo"]] = s["status"]
+
+          total = len(statuses)
+          passed = sum(1 for v in statuses.values() if v == "success")
+
+          rows = "\n".join(
+              f"| {repo} | {'✅' if s == 'success' else '❌'} |"
+              for repo, s in sorted(statuses.items())
+          )
+
+          body = f"""## Automated Theseus Data Engine Run
+
+| Repo | Status |
+|------|--------|
+{rows}
+| **Total** | **{passed}/{total} completed** |
+
+This pull request contains the latest pre-computed persistence data for the tracked repositories.
+
+**Trigger:** Monthly Schedule / Workflow Dispatch
+"""
+          with open("pr-body.md", "w") as f:
+              f.write(body.strip())
+          PYEOF
+
+      - name: Validate graph files
+        if: steps.check.outputs.has_data == 'true'
+        run: |
+          python << 'PYEOF'
+          import json, glob, sys
+
+          files = sorted(glob.glob("data/processed/*.json"))
+          if not files:
+              print("No processed files found to validate.")
+              sys.exit(1)
+
+          errors = 0
+          for f in files:
+              try:
+                  with open(f) as fh:
+                      data = json.load(fh)
+                  assert "snapshots" in data, f"Missing snapshots in {f}"
+                  assert "fossils" in data, f"Missing fossils in {f}"
+                  for snap in data["snapshots"]:
+                      assert "snapshot_date" in snap, f"Missing snapshot_date in {f}"
+                      assert "composition" in snap, f"Missing composition in {f}"
+                  print(f"  ✓ {f}")
+              except (json.JSONDecodeError, AssertionError, KeyError) as e:
+                  print(f"  ✗ {f}: {e}")
+                  errors += 1
+
+          if errors:
+              print(f"Validation failed: {errors} error(s)")
+              sys.exit(1)
+          print("All graph files validated.")
+          PYEOF
+
+      - name: Create or update pull request
+        if: steps.check.outputs.has_data == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUMBER=$(gh pr list --head chore/monthly-data-update --json number --jq '.[0].number')
+          if [ -z "$PR_NUMBER" ]; then
+            gh pr create \
+              --base main \
+              --head chore/monthly-data-update \
+              --title "chore: monthly theseus data pipeline update" \
+              --body-file pr-body.md \
+              --label "automated pr,data update"
+          else
+            gh pr edit "$PR_NUMBER" \
+              --title "chore: monthly theseus data pipeline update" \
+              --body-file pr-body.md \
+              --add-label "automated pr,data update"
+          fi
