@@ -162,19 +162,15 @@ jobs:
               for repo, s in sorted(statuses.items())
           )
 
-          body = f"""## Automated Theseus Data Engine Run
-
-| Repo | Status |
-|------|--------|
-{rows}
-| **Total** | **{passed}/{total} completed** |
-
-This pull request contains the latest pre-computed persistence data for the tracked repositories.
-
-**Trigger:** Monthly Schedule / Workflow Dispatch
-"""
+          header = "## Automated Theseus Data Engine Run\n\n"
+          table = "| Repo | Status |\n|------|--------|\n"
+          total_row = f"| **Total** | **{passed}/{total} completed** |\n\n"
+          footer = ("This pull request contains the latest pre-computed "
+                    "persistence data for the tracked repositories.\n\n"
+                    "**Trigger:** Monthly Schedule / Workflow Dispatch")
+          body = header + table + rows + "\n" + total_row + footer
           with open("pr-body.md", "w") as f:
-              f.write(body.strip())
+              f.write(body)
           PYEOF
 
       - name: Validate graph files
