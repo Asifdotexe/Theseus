@@ -164,11 +164,11 @@ jobs:
 
           header = "## Automated Theseus Data Engine Run\n\n"
           table = "| Repo | Status |\n|------|--------|\n"
-          total = f"| **Total** | **{passed}/{total} completed** |\n\n"
+          total_row = f"| **Total** | **{passed}/{total} completed** |\n\n"
           footer = ("This pull request contains the latest pre-computed "
                     "persistence data for the tracked repositories.\n\n"
                     "**Trigger:** Monthly Schedule / Workflow Dispatch")
-          body = header + table + rows + "\n" + total + footer
+          body = header + table + rows + "\n" + total_row + footer
           with open("pr-body.md", "w") as f:
               f.write(body)
           PYEOF
