@@ -56,7 +56,7 @@ jobs:
       - name: Run pipeline for ${{ matrix.repo }}
         id: pipeline
         continue-on-error: true
-        run: poetry run python scripts/run_pipeline.py --repo ${{ matrix.repo }} --update-survivor
+        run: poetry run python scripts/run_pipeline.py --repo "${{ matrix.repo }}" --update-survivor
         timeout-minutes: 120
 
       - name: Push data to shared branch
