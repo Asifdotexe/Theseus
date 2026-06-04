@@ -1,0 +1,109 @@
+"""
+CLI helpers for theseus-engine.yml workflow steps.
+
+Usage:
+    python scripts/workflow.py discover-repos
+    poetry run python scripts/workflow.py build-pr-body
+    poetry run python scripts/workflow.py validate-graph-files
+"""
+
+import json
+import sys
+from pathlib import Path
+
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
+
+def discover_repos(config_path: str = "theseus.config.json") -> list[str]:
+    """Return list of repository names from the config file."""
+    with open(config_path) as f:
+        config = json.load(f)
+    return [r["name"] for r in config.get("repositories", [])]
+
+
+def build_pr_body(
+    status_dir: str = "data/.status", out_file: str = "pr-body.md"
+) -> None:
+    """Read status markers and write the PR summary markdown body."""
+    status_dir_path = Path(status_dir)
+    if not status_dir_path.is_dir():
+        return
+
+    statuses: dict[str, str] = {}
+    for f in sorted(status_dir_path.glob("*.json")):
+        with open(f) as fh:
+            s = json.load(fh)
+            statuses[s["repo"]] = s["status"]
+
+    total = len(statuses)
+    passed = sum(1 for v in statuses.values() if v == "success")
+
+    rows = "\n".join(
+        f"| {repo} | {'✅' if s == 'success' else '❌'} |"
+        for repo, s in sorted(statuses.items())
+    )
+
+    header = "## Automated Theseus Data Engine Run\n\n"
+    table = "| Repo | Status |\n|------|--------|\n"
+    total_row = f"| **Total** | **{passed}/{total} completed** |\n\n"
+    footer = (
+        "This pull request contains the latest pre-computed "
+        "persistence data for the tracked repositories.\n\n"
+        "**Trigger:** Monthly Schedule / Workflow Dispatch"
+    )
+    body = header + table + rows + "\n" + total_row + footer
+    Path(out_file).write_text(body)
+
+
+def validate_graph_files(data_dir: str = "data/processed") -> None:
+    """Validate all graph JSON files. Exits non-zero on failure."""
+    processed_path = Path(data_dir)
+    files = sorted(processed_path.glob("*.json"))
+
+    if not files:
+        print("No processed files found to validate.")
+        sys.exit(1)
+
+    errors = 0
+    for f in files:
+        try:
+            data = json.loads(f.read_text())
+            assert "snapshots" in data, f"Missing snapshots in {f}"
+            assert "fossils" in data, f"Missing fossils in {f}"
+            for snap in data["snapshots"]:
+                assert "snapshot_date" in snap, f"Missing snapshot_date in {f}"
+                assert "composition" in snap, f"Missing composition in {f}"
+            print(f"  {f.name}")
+        except (json.JSONDecodeError, AssertionError, KeyError) as e:
+            print(f"  {f.name}: {e}")
+            errors += 1
+
+    if errors:
+        print(f"Validation failed: {errors} error(s)")
+        sys.exit(1)
+    print("All graph files validated.")
+
+
+def main() -> None:
+    command = sys.argv[1] if len(sys.argv) > 1 else ""
+
+    if command == "discover-repos":
+        names = discover_repos()
+        print(json.dumps(names))
+    elif command == "build-pr-body":
+        build_pr_body()
+    elif command == "validate-graph-files":
+        validate_graph_files()
+    else:
+        print(f"Usage: python {sys.argv[0]} <command>", file=sys.stderr)
+        print(
+            "Commands: discover-repos, build-pr-body, validate-graph-files",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
