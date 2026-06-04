@@ -39,10 +39,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Python and Poetry
-        uses: ./.github/actions/setup-python-poetry
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          poetry-install-args: --no-interaction --no-root
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Poetry
+        run: pipx install poetry
+        shell: bash
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+        shell: bash
 
       - name: Run pipeline for ${{ matrix.repo }}
         continue-on-error: true
@@ -68,12 +77,15 @@ jobs:
           echo "{\"repo\": \"${{ matrix.repo }}\", \"status\": \"$STATUS\", \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
             > /tmp/data-save/status.json
 
+          git reset --hard HEAD 2>/dev/null || true
+          git clean -fd 2>/dev/null || true
+
           git fetch origin chore/monthly-data-update 2>/dev/null || true
           if git show-ref --verify refs/remotes/origin/chore/monthly-data-update 2>/dev/null; then
             git checkout chore/monthly-data-update
           else
-            git checkout --orphan chore/monthly-data-update
-            git rm -rf . >/dev/null 2>&1 || true
+            git checkout -b chore/monthly-data-update HEAD
+            git rm -rf --cached . >/dev/null 2>&1 || true
           fi
 
           mkdir -p data/raw data/processed data/.status
