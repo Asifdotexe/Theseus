@@ -54,16 +54,16 @@ jobs:
         shell: bash
 
       - name: Run pipeline for ${{ matrix.repo }}
+        id: pipeline
         continue-on-error: true
         run: poetry run python scripts/run_pipeline.py --repo ${{ matrix.repo }} --update-survivor
         timeout-minutes: 120
 
       - name: Push data to shared branch
         run: |
-          STATUS="success"
+          STATUS="${{ steps.pipeline.outcome == 'success' && 'success' || 'failure' }}"
           RAW_FILE="data/raw/${{ matrix.repo }}_data.json"
           GRAPH_FILE="data/processed/${{ matrix.repo }}_graph.json"
-          [ -f "$RAW_FILE" ] || STATUS="failure"
 
           mkdir -p /tmp/data-save
 
