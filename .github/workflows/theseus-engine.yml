@@ -39,22 +39,31 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Python and Poetry
-        uses: ./.github/actions/setup-python-poetry
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          poetry-install-args: --no-interaction --no-root
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Poetry
+        run: pipx install poetry
+        shell: bash
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+        shell: bash
 
       - name: Run pipeline for ${{ matrix.repo }}
+        id: pipeline
         continue-on-error: true
-        run: poetry run python scripts/run_pipeline.py --repo ${{ matrix.repo }} --update-survivor
+        run: poetry run python scripts/run_pipeline.py --repo "${{ matrix.repo }}" --update-survivor
         timeout-minutes: 120
 
       - name: Push data to shared branch
         run: |
-          STATUS="success"
+          STATUS="${{ steps.pipeline.outcome == 'success' && 'success' || 'failure' }}"
           RAW_FILE="data/raw/${{ matrix.repo }}_data.json"
           GRAPH_FILE="data/processed/${{ matrix.repo }}_graph.json"
-          [ -f "$RAW_FILE" ] || STATUS="failure"
 
           mkdir -p /tmp/data-save
 
@@ -68,12 +77,15 @@ jobs:
           echo "{\"repo\": \"${{ matrix.repo }}\", \"status\": \"$STATUS\", \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
             > /tmp/data-save/status.json
 
+          git reset --hard HEAD 2>/dev/null || true
+          git clean -fd 2>/dev/null || true
+
           git fetch origin chore/monthly-data-update 2>/dev/null || true
           if git show-ref --verify refs/remotes/origin/chore/monthly-data-update 2>/dev/null; then
             git checkout chore/monthly-data-update
           else
-            git checkout --orphan chore/monthly-data-update
-            git rm -rf . >/dev/null 2>&1 || true
+            git checkout -b chore/monthly-data-update HEAD
+            git rm -rf --cached . >/dev/null 2>&1 || true
           fi
 
           mkdir -p data/raw data/processed data/.status
