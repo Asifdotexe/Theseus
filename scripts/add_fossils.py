@@ -316,9 +316,9 @@ def _process_each_repo(
             logger.warning("  No snapshots found in %s, skipping.", json_file.name)
             continue
 
-        temp_dir = Path(f"./temp_fossil_repos_{repo_name}")
-        temp_dir.mkdir(exist_ok=True)
-        local_repo = temp_dir
+        base_temp = Path("./temp_fossil_repos")
+        base_temp.mkdir(exist_ok=True)
+        local_repo = base_temp / repo_name
 
         if not local_repo.exists():
             logger.info("  Cloning %s...", repo_url)
@@ -341,8 +341,8 @@ def _process_each_repo(
             logger.error("  ✗ Error processing %s: %s", repo_name, e)
             had_failures = True
 
-        if temp_dir.exists():
-            remove_path(str(temp_dir))
+        if local_repo.exists():
+            remove_path(str(local_repo))
 
     return had_failures
 
@@ -352,7 +352,9 @@ def _process_each_repo(
 # ---------------------------------------------------------------------------
 
 
-def _backfill_one(json_file: Path, snapshots: list, _fossils: dict, local_repo: Path, repo_name: str) -> str | None:
+def _backfill_one(
+    json_file: Path, snapshots: list, _fossils: dict, local_repo: Path, repo_name: str
+) -> str | None:
     """Compute both fossils for a single repo; return error string or ``None``."""
     genesis = get_genesis_fossil(local_repo)
     survivor = get_survivor_fossil(local_repo)
@@ -401,7 +403,10 @@ def backfill_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _update_survivor_one(json_file: Path, snapshots: list, existing_fossils: dict, local_repo: Path, repo_name: str) -> str | None:
+def _update_survivor_one(
+    json_file: Path, snapshots: list, existing_fossils: dict,
+    local_repo: Path, repo_name: str,
+) -> str | None:
     """Update survivor fossil for a single repo; return error string or ``None``."""
     existing_survivor = existing_fossils.get("survivor", {})
     new_survivor = get_survivor_fossil(local_repo)
@@ -413,13 +418,25 @@ def _update_survivor_one(json_file: Path, snapshots: list, existing_fossils: dic
     if old_identity == new_identity and not metadata_changed:
         logger.info(
             "  ✓ Survivor unchanged: %s:%s (commit %s) — skipping write.",
-            new_survivor.get("file"), new_survivor.get("line"), new_survivor.get("commit"),
+            new_survivor.get("file"),
+            new_survivor.get("line"),
+            new_survivor.get("commit"),
         )
         return None
 
     logger.info("  ↻ Survivor updated for %s:", repo_name)
-    logger.info("    OLD: %s:%s @ %s", existing_survivor.get("file"), existing_survivor.get("line"), existing_survivor.get("commit"))
-    logger.info("    NEW: %s:%s @ %s", new_survivor.get("file"), new_survivor.get("line"), new_survivor.get("commit"))
+    logger.info(
+        "    OLD: %s:%s @ %s",
+        existing_survivor.get("file"),
+        existing_survivor.get("line"),
+        existing_survivor.get("commit"),
+    )
+    logger.info(
+        "    NEW: %s:%s @ %s",
+        new_survivor.get("file"),
+        new_survivor.get("line"),
+        new_survivor.get("commit"),
+    )
 
     updated_fossils = {**existing_fossils, "survivor": new_survivor}
     save_snapshot_data(str(json_file), snapshots, updated_fossils)

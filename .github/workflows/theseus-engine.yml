@@ -164,7 +164,8 @@ jobs:
           # Force-push is safe here: create-pr is the only job at this point,
           # and the orphaned branch must be replaced to share history with main
           git push origin HEAD:chore/monthly-data-update --force
-          git checkout chore/monthly-data-update
+          git fetch origin chore/monthly-data-update
+          git checkout -B chore/monthly-data-update origin/chore/monthly-data-update
 
       - name: Check for status markers
         id: check

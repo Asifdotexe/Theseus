@@ -305,6 +305,39 @@ def _ensure_repo_ready(repo_slug: str, repo_name: str, temp_repo_path: str) -> N
     run_command(["git", "pull"], cwd=temp_repo_path)
 
 
+def _find_baseline(
+    historical_snapshots: list[dict], first_new_period: str | None,
+) -> tuple[str, dict[str, dict[str, int]]] | None:
+    """
+    Find the best incremental-blame baseline from historical snapshots.
+
+    Uses the most recent snapshot whose ``snapshot_date`` is strictly earlier
+    than *first_new_period*.  Falls back to the newest snapshot when no
+    earlier snapshot exists or when *first_new_period* is ``None``.
+
+    :param historical_snapshots: Existing snapshots on disk.
+    :param first_new_period: The ``YYYY-MM`` period of the first new snapshot.
+    :return: ``(commit_hash, file_compositions)`` tuple or ``None``.
+    """
+    if not historical_snapshots:
+        return None
+
+    if first_new_period:
+        for snap in reversed(historical_snapshots):
+            if snap["snapshot_date"] < first_new_period:
+                commit = snap.get("commit_hash", "")
+                comp = snap.get("file_compositions")
+                if commit and comp:
+                    return (commit, comp)
+
+    last_hist = historical_snapshots[-1]
+    commit = last_hist.get("commit_hash", "")
+    comp = last_hist.get("file_compositions")
+    if commit and comp:
+        return (commit, comp)
+    return None
+
+
 def _process_snapshots_by_year(
     repo_name: str,
     temp_repo_path: str,
@@ -320,18 +353,15 @@ def _process_snapshots_by_year(
     snapshots_by_year = groupby(new_snapshots, key=lambda x: x[0][:4])
     total_new_data = []
 
-    prev_file_data: tuple[str, dict[str, dict[str, int]]] | None = None
-    if historical_snapshots:
-        last_hist = historical_snapshots[-1]
-        hist_commit = last_hist.get("commit_hash", "")
-        hist_compositions = last_hist.get("file_compositions")
-        if hist_commit and hist_compositions:
-            prev_file_data = (hist_commit, hist_compositions)
-            logger.info(
-                "[%s] Using incremental blame from %s",
-                repo_name,
-                last_hist["snapshot_date"],
-            )
+    first_new_period = new_snapshots[0][0] if new_snapshots else None
+    baseline = _find_baseline(historical_snapshots, first_new_period)
+    prev_file_data = baseline
+    if prev_file_data:
+        logger.info(
+            "[%s] Using incremental blame from %s",
+            repo_name,
+            historical_snapshots[-1]["snapshot_date"],
+        )
 
     for year, year_snapshots in snapshots_by_year:
         year_snapshots_list = list(year_snapshots)
@@ -373,7 +403,12 @@ def _process_snapshots_by_year(
         total_new_data.extend(year_data)
         year_elapsed = time.perf_counter() - year_start
 
-        final_snapshots = historical_snapshots + total_new_data
+        new_periods = {s["snapshot_date"] for s in total_new_data}
+        existing_filtered = [
+            s for s in historical_snapshots
+            if s["snapshot_date"] not in new_periods
+        ]
+        final_snapshots = existing_filtered + total_new_data
         final_snapshots.sort(key=lambda x: x["snapshot_date"])
 
         save_snapshot_data(output_json_path, final_snapshots, existing_fossils)

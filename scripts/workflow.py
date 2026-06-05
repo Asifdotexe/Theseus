@@ -67,7 +67,7 @@ def validate_graph_files(data_dir: str = "data/processed") -> None:
     errors = 0
     for f in files:
         try:
-            data = json.loads(f.read_text())
+            data = json.loads(f.read_text(encoding="utf-8"))
             if "snapshots" not in data:
                 raise ValueError(f"Missing snapshots in {f}")
             if "fossils" not in data:
