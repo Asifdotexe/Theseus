@@ -215,6 +215,7 @@ def remove_path(path: str) -> None:
                 ["cmd", "/c", "rd", "/s", "/q", path],
                 capture_output=True,
                 timeout=30,
+                check=False,
             )
             if not os.path.exists(path):
                 return
@@ -226,6 +227,7 @@ def remove_path(path: str) -> None:
                 ["rm", "-rf", path],
                 capture_output=True,
                 timeout=30,
+                check=False,
             )
             if not os.path.exists(path):
                 return
@@ -233,7 +235,7 @@ def remove_path(path: str) -> None:
             pass
 
     # Fallback: retry with shutil.rmtree, fixing permissions on each retry
-    def handle_remove_readonly(func, path, _exc_info):
+    def _handle_remove_readonly(func, path, _exc):
         try:
             current_mode = os.stat(path).st_mode
             os.chmod(
@@ -248,7 +250,7 @@ def remove_path(path: str) -> None:
 
     for attempt in range(3):
         try:
-            shutil.rmtree(path, onerror=handle_remove_readonly)
+            shutil.rmtree(path, onexc=_handle_remove_readonly)
             break
         except Exception:  # noqa: BLE001
             if attempt < 2:

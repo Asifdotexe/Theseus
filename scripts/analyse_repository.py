@@ -24,6 +24,7 @@ to discover each fossil type.
 """
 
 import argparse
+import concurrent.futures
 import logging
 import os
 import sys
@@ -31,10 +32,7 @@ import time
 from collections import defaultdict
 from itertools import groupby
 
-# Ensure sibling imports work in all invocation contexts
-_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
-if _SCRIPTS_DIR not in sys.path:
-    sys.path.insert(0, _SCRIPTS_DIR)
+import _path_guard  # noqa: F401  # pylint: disable=unused-import
 
 from _blame import BlameRunner
 from _data_io import load_snapshot_data, save_snapshot_data
@@ -44,6 +42,7 @@ from _utils import (
     get_default_branch,
     get_tracked_files,
     load_config,
+    remove_path,
     run_command,
 )
 
@@ -285,6 +284,106 @@ def _filter_snapshots(
     return result
 
 
+def _ensure_repo_ready(repo_slug: str, repo_name: str, temp_repo_path: str) -> None:
+    """Clone or fetch the repository so it's ready for analysis."""
+    if not os.path.exists(temp_repo_path):
+        clone_repository(repo_slug, temp_repo_path)
+        return
+
+    logger.info("Repository %s already exists locally. Fetching latest...", repo_name)
+    run_command(["git", "fetch", "--all"], cwd=temp_repo_path)
+    default_branch = get_default_branch(temp_repo_path)
+    if default_branch == "HEAD":
+        raise RuntimeError(
+            f"[{repo_name}] Cannot determine default branch after fetch. "
+            "Tried: main, master, develop, origin/HEAD."
+        )
+    run_command(
+        ["git", "checkout", "-B", default_branch, f"origin/{default_branch}"],
+        cwd=temp_repo_path,
+    )
+    run_command(["git", "pull"], cwd=temp_repo_path)
+
+
+def _process_snapshots_by_year(
+    repo_name: str,
+    temp_repo_path: str,
+    new_snapshots: list[tuple[str, str]],
+    historical_snapshots: list[dict],
+    output_json_path: str,
+    existing_fossils: dict,
+) -> None:
+    """
+    Process new snapshots year-by-year, writing intermediate results after
+    each year to prevent data loss on crash.
+    """
+    snapshots_by_year = groupby(new_snapshots, key=lambda x: x[0][:4])
+    total_new_data = []
+
+    prev_file_data: tuple[str, dict[str, dict[str, int]]] | None = None
+    if historical_snapshots:
+        last_hist = historical_snapshots[-1]
+        hist_commit = last_hist.get("commit_hash", "")
+        hist_compositions = last_hist.get("file_compositions")
+        if hist_commit and hist_compositions:
+            prev_file_data = (hist_commit, hist_compositions)
+            logger.info(
+                "[%s] Using incremental blame from %s",
+                repo_name,
+                last_hist["snapshot_date"],
+            )
+
+    for year, year_snapshots in snapshots_by_year:
+        year_snapshots_list = list(year_snapshots)
+        year_data = []
+        year_start = time.perf_counter()
+
+        logger.info(
+            "[%s] Processing year %s: %d snapshots",
+            repo_name, year, len(year_snapshots_list),
+        )
+
+        for idx, (period, commit) in enumerate(year_snapshots_list, 1):
+            logger.info(
+                "[%s] [%s] Processing %s (%d/%d) — Commit: %s",
+                repo_name, year, period, idx, len(year_snapshots_list), commit[:7],
+            )
+
+            snapshot_start = time.perf_counter()
+            distribution, file_compositions = analyze_single_snapshot(
+                temp_repo_path, commit, prev_file_data
+            )
+            snapshot_elapsed = time.perf_counter() - snapshot_start
+
+            prev_file_data = (commit, file_compositions)
+
+            logger.info(
+                "[%s] [%s] Completed %s in %.2f seconds (%d total lines)",
+                repo_name, year, period, snapshot_elapsed,
+                sum(distribution.values()),
+            )
+
+            year_data.append({
+                "snapshot_date": period,
+                "commit_hash": commit,
+                "composition": distribution,
+                "file_compositions": file_compositions,
+            })
+
+        total_new_data.extend(year_data)
+        year_elapsed = time.perf_counter() - year_start
+
+        final_snapshots = historical_snapshots + total_new_data
+        final_snapshots.sort(key=lambda x: x["snapshot_date"])
+
+        save_snapshot_data(output_json_path, final_snapshots, existing_fossils)
+
+        logger.info(
+            "[%s] Completed year %s in %.2f seconds. Wrote %d snapshots.",
+            repo_name, year, year_elapsed, len(final_snapshots),
+        )
+
+
 def process_repository(
     repo_slug: str, data_dir: str, reprocess: str | None = None
 ) -> None:
@@ -304,24 +403,7 @@ def process_repository(
     output_json_path = os.path.join(data_dir, "raw", f"{repo_name}_data.json")
 
     try:
-        if not os.path.exists(temp_repo_path):
-            clone_repository(repo_slug, temp_repo_path)
-        else:
-            logger.info(
-                "Repository %s already exists locally. Fetching latest...", repo_name
-            )
-            run_command(["git", "fetch", "--all"], cwd=temp_repo_path)
-            default_branch = get_default_branch(temp_repo_path)
-            if default_branch == "HEAD":
-                raise RuntimeError(
-                    f"[{repo_name}] Cannot determine default branch after fetch. "
-                    "Tried: main, master, develop, origin/HEAD."
-                )
-            run_command(
-                ["git", "checkout", "-B", default_branch, f"origin/{default_branch}"],
-                cwd=temp_repo_path,
-            )
-            run_command(["git", "pull"], cwd=temp_repo_path)
+        _ensure_repo_ready(repo_slug, repo_name, temp_repo_path)
 
         state = load_snapshot_data(output_json_path)
         historical_snapshots = state["snapshots"]
@@ -344,92 +426,12 @@ def process_repository(
             len(new_snapshots),
         )
 
-        snapshots_by_year = groupby(new_snapshots, key=lambda x: x[0][:4])
-        total_new_data = []
-
-        # Find the previous snapshot for incremental blame baseline
-        prev_file_data: tuple[str, dict[str, dict[str, int]]] | None = None
-        if historical_snapshots:
-            last_hist = historical_snapshots[-1]
-            hist_commit = last_hist.get("commit_hash", "")
-            hist_compositions = last_hist.get("file_compositions")
-            if hist_commit and hist_compositions:
-                prev_file_data = (hist_commit, hist_compositions)
-                logger.info(
-                    "[%s] Using incremental blame from %s",
-                    repo_name,
-                    last_hist["snapshot_date"],
-                )
-
-        for year, year_snapshots in snapshots_by_year:
-            year_snapshots_list = list(year_snapshots)
-            year_data = []
-            year_start = time.perf_counter()
-
-            logger.info(
-                "[%s] Processing year %s: %d snapshots",
-                repo_name,
-                year,
-                len(year_snapshots_list),
-            )
-
-            for idx, (period, commit) in enumerate(year_snapshots_list, 1):
-                logger.info(
-                    "[%s] [%s] Processing %s (%d/%d) — Commit: %s",
-                    repo_name,
-                    year,
-                    period,
-                    idx,
-                    len(year_snapshots_list),
-                    commit[:7],
-                )
-
-                snapshot_start = time.perf_counter()
-                distribution, file_compositions = analyze_single_snapshot(
-                    temp_repo_path, commit, prev_file_data
-                )
-                snapshot_elapsed = time.perf_counter() - snapshot_start
-
-                # Prepare prev_file_data for the next iteration
-                prev_file_data = (commit, file_compositions)
-
-                logger.info(
-                    "[%s] [%s] Completed %s in %.2f seconds (%d total lines)",
-                    repo_name,
-                    year,
-                    period,
-                    snapshot_elapsed,
-                    sum(distribution.values()),
-                )
-
-                year_data.append(
-                    {
-                        "snapshot_date": period,
-                        "commit_hash": commit,
-                        "composition": distribution,
-                        "file_compositions": file_compositions,
-                    }
-                )
-
-            total_new_data.extend(year_data)
-            year_elapsed = time.perf_counter() - year_start
-
-            final_snapshots = historical_snapshots + total_new_data
-            final_snapshots.sort(key=lambda x: x["snapshot_date"])
-
-            save_snapshot_data(output_json_path, final_snapshots, existing_fossils)
-
-            logger.info(
-                "[%s] Completed year %s in %.2f seconds. Wrote %d snapshots.",
-                repo_name,
-                year,
-                year_elapsed,
-                len(final_snapshots),
-            )
+        _process_snapshots_by_year(
+            repo_name, temp_repo_path, new_snapshots,
+            historical_snapshots, output_json_path, existing_fossils,
+        )
 
     finally:
-        from _utils import remove_path
-
         remove_path(temp_repo_path)
 
 
@@ -495,8 +497,6 @@ def main() -> None:
 
     if args.reprocess:
         logger.info("Re-processing period: %s", args.reprocess)
-
-    import concurrent.futures
 
     max_top_level_workers = min(
         len(selected_targets),

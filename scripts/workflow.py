@@ -11,14 +11,12 @@ import json
 import sys
 from pathlib import Path
 
-_SCRIPTS_DIR = Path(__file__).resolve().parent
-if str(_SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS_DIR))
+import _path_guard  # noqa: F401  # pylint: disable=unused-import
 
 
 def discover_repos(config_path: str = "theseus.config.json") -> list[str]:
     """Return list of repository names from the config file."""
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         config = json.load(f)
     return [r["name"] for r in config.get("repositories", [])]
 
@@ -33,7 +31,7 @@ def build_pr_body(
 
     statuses: dict[str, str] = {}
     for f in sorted(status_dir_path.glob("*.json")):
-        with open(f) as fh:
+        with open(f, encoding="utf-8") as fh:
             s = json.load(fh)
             statuses[s["repo"]] = s["status"]
 
@@ -87,6 +85,7 @@ def validate_graph_files(data_dir: str = "data/processed") -> None:
 
 
 def main() -> None:
+    """CLI entry point: dispatch to subcommand."""
     command = sys.argv[1] if len(sys.argv) > 1 else ""
 
     if command == "discover-repos":
