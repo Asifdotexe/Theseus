@@ -43,13 +43,12 @@ The ``fossils`` object stores the two fossil types:
 
 import json
 import logging
-import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
-# TODO: Move away from OS to Pathlib
-def load_snapshot_data(file_path: str) -> dict:
+def load_snapshot_data(file_path: str | Path) -> dict:
     """
     Load snapshot data from a JSON file, normalising to ``{snapshots, fossils}``.
 
@@ -59,12 +58,12 @@ def load_snapshot_data(file_path: str) -> dict:
     :param file_path: Path to the JSON data file.
     :return: Dictionary with ``snapshots`` (list) and ``fossils`` (dict) keys.
     """
-    if not os.path.exists(file_path):
+    path = Path(file_path)
+    if not path.exists():
         return {"snapshots": [], "fossils": {}}
 
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        data = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(data, list):
             return {"snapshots": data, "fossils": {}}
         if isinstance(data, dict):
@@ -81,20 +80,19 @@ def load_snapshot_data(file_path: str) -> dict:
         return {"snapshots": [], "fossils": {}}
 
 
-# TODO: Move away from OS to Pathlib
-def save_snapshot_data(file_path: str, snapshots: list[dict], fossils: dict) -> None:
+def save_snapshot_data(file_path: str | Path, snapshots: list[dict], fossils: dict) -> None:
     """
     Atomically write snapshot data to a minified JSON file.
 
     Writes to a ``.tmp`` sibling first, then atomically replaces the target
-    via ``os.replace`` to prevent file corruption on crash.
+    to prevent file corruption on crash.
 
     :param file_path: Destination path.
     :param snapshots: List of snapshot objects.
     :param fossils: Fossil dictionary (``genesis`` + ``survivor`` keys).
     """
-    tmp_path = file_path + ".tmp"
+    path = Path(file_path)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
     data = {"snapshots": snapshots, "fossils": fossils}
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, separators=(",", ":"))
-    os.replace(tmp_path, file_path)
+    tmp_path.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
+    tmp_path.replace(path)

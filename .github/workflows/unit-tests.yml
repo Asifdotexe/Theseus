@@ -12,13 +12,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Python and Poetry
-        uses: ./.github/actions/setup-python-poetry
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
-          poetry-install-args: --with dev
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Poetry
+        run: pipx install poetry
+        shell: bash
+
+      - name: Install dependencies
+        run: poetry install --with dev
+        shell: bash
 
       - name: Run linter
         run: poetry run pylint scripts/ --output-format=colorized

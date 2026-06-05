@@ -30,10 +30,7 @@ import os
 import sys
 import time
 
-# Ensure sibling imports work in all invocation contexts
-_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
-if _SCRIPTS_DIR not in sys.path:
-    sys.path.insert(0, _SCRIPTS_DIR)
+import _path_guard  # noqa: F401  # pylint: disable=unused-import
 
 from _utils import load_config
 from cleanup_data import cleanup_data as run_cleanup

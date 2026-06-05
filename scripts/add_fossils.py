@@ -51,14 +51,10 @@ Modes
 
 import argparse
 import logging
-import os
 import sys
 from pathlib import Path
 
-# Ensure sibling imports work in all invocation contexts
-_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
-if _SCRIPTS_DIR not in sys.path:
-    sys.path.insert(0, _SCRIPTS_DIR)
+import _path_guard  # noqa: F401  # pylint: disable=unused-import
 
 from _blame import BlameRunner, _blank_fossil
 from _data_io import load_snapshot_data, save_snapshot_data
@@ -273,8 +269,118 @@ def get_survivor_fossil(repo_path: str | Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Shared repo-iteration helper
+# ---------------------------------------------------------------------------
+
+
+def _process_each_repo(
+    data_dir: str,
+    repo_urls: dict[str, str],
+    process_fn,
+    log_prefix: str = "Processing",
+) -> bool:
+    """
+    Iterate over every JSON file in ``data_dir/raw/``, clone/fetch each repo,
+    call *process_fn* with ``(json_file, snapshots, existing_fossils, local_repo, repo_name)``,
+    then clean up the temp directory.
+
+    Handles iteration, cloning, fetch, temp-dir cleanup, and error logging.
+    *process_fn* should return ``None`` for success or a string error message.
+
+    :param data_dir: Path to the ``data/`` directory.
+    :param repo_urls: ``{repo_name: clone_url}`` mapping.
+    :param process_fn: Callback taking ``(json_file, snapshots, existing_fossils, local_repo, repo_name)``.
+    :param log_prefix: Prefix for log messages (e.g. ``"Processing"``, ``"Checking survivor for"``).
+    :return: ``True`` if any errors occurred.
+    """
+    data_path = Path(data_dir) / "raw"
+    had_failures = False
+
+    for json_file in sorted(data_path.glob("*.json")):
+        if json_file.name == "manifest.json":
+            continue
+
+        repo_name = json_file.stem.replace("_data", "")
+        repo_url = repo_urls.get(repo_name)
+        if not repo_url:
+            logger.warning("No URL found for '%s', skipping.", repo_name)
+            continue
+
+        logger.info("━━━ %s: %s ━━━", log_prefix, repo_name)
+
+        data = load_snapshot_data(str(json_file))
+        snapshots = data["snapshots"]
+        existing_fossils = data.get("fossils", {})
+
+        if not snapshots:
+            logger.warning("  No snapshots found in %s, skipping.", json_file.name)
+            continue
+
+        base_temp = Path("./temp_fossil_repos")
+        base_temp.mkdir(exist_ok=True)
+        local_repo = base_temp / repo_name
+
+        if not local_repo.exists():
+            logger.info("  Cloning %s...", repo_url)
+            run_command(["git", "clone", repo_url, str(local_repo)])
+        else:
+            logger.info("  Repo already cloned — fetching latest...")
+            try:
+                run_command(["git", "fetch", "--all"], cwd=str(local_repo))
+            except RuntimeError as e:
+                logger.warning("  Fetch failed (continuing with local): %s", e)
+
+        try:
+            error = process_fn(json_file, snapshots, existing_fossils, local_repo, repo_name)
+            if error:
+                logger.error("  ✗ %s", error)
+                had_failures = True
+            else:
+                logger.info("  ✓ %s", repo_name)
+        except Exception as e:  # noqa: BLE001
+            logger.error("  ✗ Error processing %s: %s", repo_name, e)
+            had_failures = True
+
+        if local_repo.exists():
+            remove_path(str(local_repo))
+
+    return had_failures
+
+
+# ---------------------------------------------------------------------------
 # Full backfill driver
 # ---------------------------------------------------------------------------
+
+
+def _backfill_one(
+    json_file: Path, snapshots: list, _fossils: dict, local_repo: Path, repo_name: str
+) -> str | None:
+    """Compute both fossils for a single repo; return error string or ``None``."""
+    genesis = get_genesis_fossil(local_repo)
+    survivor = get_survivor_fossil(local_repo)
+    new_fossils = {"genesis": genesis, "survivor": survivor}
+
+    if not genesis.get("file"):
+        logger.warning("  ⚠ Genesis fossil is empty for %s", repo_name)
+    if not survivor.get("file"):
+        logger.warning("  ⚠ Survivor fossil is empty for %s", repo_name)
+    if genesis.get("commit") == survivor.get("commit") and genesis.get("file"):
+        logger.warning(
+            "  ⚠ Genesis and Survivor share the same commit (%s) "
+            "— may indicate the repo was never fully rewritten.",
+            genesis["commit"],
+        )
+
+    logger.info(
+        "  Genesis  → %s | %s:%s | %s",
+        genesis.get("year"), genesis.get("file"), genesis.get("line"), genesis.get("commit"),
+    )
+    logger.info(
+        "  Survivor → %s | %s:%s | %s",
+        survivor.get("year"), survivor.get("file"), survivor.get("line"), survivor.get("commit"),
+    )
+
+    save_snapshot_data(str(json_file), snapshots, new_fossils)
 
 
 def backfill_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
@@ -289,88 +395,52 @@ def backfill_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
     :param repo_urls: ``{repo_name: clone_url}`` mapping.
     :return: ``True`` if any errors occurred, ``False`` otherwise.
     """
-    data_path = Path(data_dir) / "raw"
-    had_failures = False
-
-    for json_file in sorted(data_path.glob("*.json")):
-        if json_file.name == "manifest.json":
-            continue
-
-        repo_name = json_file.stem.replace("_data", "")
-        repo_url = repo_urls.get(repo_name)
-        if not repo_url:
-            logger.warning("No URL found for '%s', skipping.", repo_name)
-            continue
-
-        logger.info("━━━ Processing: %s ━━━", repo_name)
-
-        data = load_snapshot_data(str(json_file))
-        snapshots = data["snapshots"]
-        if not snapshots:
-            logger.warning("  No snapshots found in %s, skipping.", json_file.name)
-            continue
-
-        temp_dir = Path(f"./temp_fossil_repos_{repo_name}")
-        temp_dir.mkdir(exist_ok=True)
-        local_repo = temp_dir
-
-        if not local_repo.exists():
-            logger.info("  Cloning %s...", repo_url)
-            run_command(["git", "clone", repo_url, str(local_repo)])
-        else:
-            logger.info("  Repo already cloned — fetching latest...")
-            try:
-                run_command(["git", "fetch", "--all"], cwd=str(local_repo))
-            except RuntimeError as e:
-                logger.warning("  Fetch failed (continuing with local): %s", e)
-
-        try:
-            genesis = get_genesis_fossil(local_repo)
-            survivor = get_survivor_fossil(local_repo)
-            fossils = {"genesis": genesis, "survivor": survivor}
-
-            if not genesis.get("file"):
-                logger.warning("  ⚠ Genesis fossil is empty for %s", repo_name)
-            if not survivor.get("file"):
-                logger.warning("  ⚠ Survivor fossil is empty for %s", repo_name)
-            if genesis.get("commit") == survivor.get("commit") and genesis.get("file"):
-                logger.warning(
-                    "  ⚠ Genesis and Survivor share the same commit (%s) "
-                    "— may indicate the repo was never fully rewritten.",
-                    genesis["commit"],
-                )
-
-            logger.info(
-                "  Genesis  → %s | %s:%s | %s",
-                genesis.get("year"),
-                genesis.get("file"),
-                genesis.get("line"),
-                genesis.get("commit"),
-            )
-            logger.info(
-                "  Survivor → %s | %s:%s | %s",
-                survivor.get("year"),
-                survivor.get("file"),
-                survivor.get("line"),
-                survivor.get("commit"),
-            )
-
-            save_snapshot_data(str(json_file), snapshots, fossils)
-            logger.info("  ✓ Successfully wrote fossils for %s", repo_name)
-
-        except Exception as e:  # noqa: BLE001
-            logger.error("  ✗ Error computing fossils for %s: %s", repo_name, e)
-            had_failures = True
-
-        if temp_dir.exists():
-            remove_path(str(temp_dir))
-
-    return had_failures
+    return _process_each_repo(data_dir, repo_urls, _backfill_one, log_prefix="Processing")
 
 
 # ---------------------------------------------------------------------------
 # Incremental survivor-only update (used by GitHub Actions)
 # ---------------------------------------------------------------------------
+
+
+def _update_survivor_one(
+    json_file: Path, snapshots: list, existing_fossils: dict,
+    local_repo: Path, repo_name: str,
+) -> str | None:
+    """Update survivor fossil for a single repo; return error string or ``None``."""
+    existing_survivor = existing_fossils.get("survivor", {})
+    new_survivor = get_survivor_fossil(local_repo)
+
+    old_identity = _fossil_identity(existing_survivor)
+    new_identity = _fossil_identity(new_survivor)
+    metadata_changed = existing_survivor.get("view_commit") != new_survivor.get("view_commit")
+
+    if old_identity == new_identity and not metadata_changed:
+        logger.info(
+            "  ✓ Survivor unchanged: %s:%s (commit %s) — skipping write.",
+            new_survivor.get("file"),
+            new_survivor.get("line"),
+            new_survivor.get("commit"),
+        )
+        return None
+
+    logger.info("  ↻ Survivor updated for %s:", repo_name)
+    logger.info(
+        "    OLD: %s:%s @ %s",
+        existing_survivor.get("file"),
+        existing_survivor.get("line"),
+        existing_survivor.get("commit"),
+    )
+    logger.info(
+        "    NEW: %s:%s @ %s",
+        new_survivor.get("file"),
+        new_survivor.get("line"),
+        new_survivor.get("commit"),
+    )
+
+    updated_fossils = {**existing_fossils, "survivor": new_survivor}
+    save_snapshot_data(str(json_file), snapshots, updated_fossils)
+    return None
 
 
 def update_survivor_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
@@ -385,93 +455,7 @@ def update_survivor_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
     :param repo_urls: ``{repo_name: clone_url}`` mapping.
     :return: ``True`` if any errors occurred, ``False`` otherwise.
     """
-    data_path = Path(data_dir) / "raw"
-
-    updated_count = 0
-    had_failures = False
-
-    for json_file in sorted(data_path.glob("*.json")):
-        if json_file.name == "manifest.json":
-            continue
-
-        repo_name = json_file.stem.replace("_data", "")
-        repo_url = repo_urls.get(repo_name)
-        if not repo_url:
-            logger.warning("No URL found for '%s', skipping.", repo_name)
-            continue
-
-        logger.info("━━━ Checking survivor for: %s ━━━", repo_name)
-
-        data = load_snapshot_data(str(json_file))
-        snapshots = data["snapshots"]
-        existing_fossils = data.get("fossils", {})
-
-        if not snapshots:
-            logger.warning("  No snapshots found in %s, skipping.", json_file.name)
-            continue
-
-        existing_survivor = existing_fossils.get("survivor", {})
-
-        temp_dir = Path(f"./temp_fossil_repos_{repo_name}")
-        temp_dir.mkdir(exist_ok=True)
-        local_repo = temp_dir
-
-        if not local_repo.exists():
-            logger.info("  Cloning %s...", repo_url)
-            run_command(["git", "clone", repo_url, str(local_repo)])
-        else:
-            logger.info("  Fetching latest...")
-            try:
-                run_command(["git", "fetch", "--all"], cwd=str(local_repo))
-            except RuntimeError as e:
-                logger.warning("  Fetch failed (continuing with local): %s", e)
-
-        try:
-            new_survivor = get_survivor_fossil(local_repo)
-
-            old_identity = _fossil_identity(existing_survivor)
-            new_identity = _fossil_identity(new_survivor)
-            metadata_changed = existing_survivor.get("view_commit") != new_survivor.get(
-                "view_commit"
-            )
-
-            if old_identity == new_identity and not metadata_changed:
-                logger.info(
-                    "  ✓ Survivor unchanged: %s:%s (commit %s) — skipping write.",
-                    new_survivor.get("file"),
-                    new_survivor.get("line"),
-                    new_survivor.get("commit"),
-                )
-                continue
-
-            logger.info("  ↻ Survivor updated for %s:", repo_name)
-            logger.info(
-                "    OLD: %s:%s @ %s",
-                existing_survivor.get("file"),
-                existing_survivor.get("line"),
-                existing_survivor.get("commit"),
-            )
-            logger.info(
-                "    NEW: %s:%s @ %s",
-                new_survivor.get("file"),
-                new_survivor.get("line"),
-                new_survivor.get("commit"),
-            )
-
-            updated_fossils = {**existing_fossils, "survivor": new_survivor}
-            save_snapshot_data(str(json_file), snapshots, updated_fossils)
-            logger.info("  ✓ Wrote updated survivor for %s", repo_name)
-            updated_count += 1
-
-        except Exception as e:  # noqa: BLE001
-            logger.error("  ✗ Error updating survivor for %s: %s", repo_name, e)
-            had_failures = True
-
-        if temp_dir.exists():
-            remove_path(str(temp_dir))
-
-    logger.info("\nSurvivor update complete. %d repo(s) updated.", updated_count)
-    return had_failures
+    return _process_each_repo(data_dir, repo_urls, _update_survivor_one, log_prefix="Checking survivor for")
 
 
 # ---------------------------------------------------------------------------

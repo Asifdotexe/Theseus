@@ -18,18 +18,14 @@ jobs:
       - uses: actions/checkout@v4
       - id: extract
         run: |
-          REPOS=$(python -c '
-          import json
-          with open("theseus.config.json") as f:
-              config = json.load(f)
-          names = [r["name"] for r in config.get("repositories", [])]
-          print(json.dumps(names))
-          ')
+          REPOS=$(python scripts/workflow.py discover-repos)
           echo "repos=$REPOS" >> "$GITHUB_OUTPUT"
 
   analyze:
     needs: discover-repos
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -78,6 +74,7 @@ jobs:
             > /tmp/data-save/status.json
 
           git reset --hard HEAD 2>/dev/null || true
+          # Discard generated data but keep gitignored files (-fd, no -x)
           git clean -fd 2>/dev/null || true
 
           git fetch origin chore/monthly-data-update 2>/dev/null || true
@@ -143,6 +140,33 @@ jobs:
             echo "has_branch=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Fix shared branch ancestry
+        if: steps.shared.outputs.has_branch == 'true'
+        run: |
+          if git merge-base --is-ancestor origin/main HEAD 2>/dev/null; then
+            echo "Shared branch has common history with main."
+            exit 0
+          fi
+          echo "Shared branch has orphaned history. Rebasing onto main..."
+          SAVE_DIR=$(mktemp -d)
+          cp -r data/* "$SAVE_DIR"/ 2>/dev/null || true
+          git checkout origin/main
+          # Full reset: remove everything from index and all untracked/ignored files
+          git rm -rf --cached . >/dev/null 2>&1 || true
+          git clean -fdx >/dev/null 2>&1 || true
+          mkdir -p data/raw data/processed data/.status
+          cp -r "$SAVE_DIR"/* data/ 2>/dev/null || true
+          rm -rf "$SAVE_DIR"
+          git add data/
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "fix: rebase shared data onto main"
+          # Force-push is safe here: create-pr is the only job at this point,
+          # and the orphaned branch must be replaced to share history with main
+          git push origin HEAD:chore/monthly-data-update --force
+          git fetch origin chore/monthly-data-update
+          git checkout -B chore/monthly-data-update origin/chore/monthly-data-update
+
       - name: Check for status markers
         id: check
         if: steps.shared.outputs.has_branch == 'true'
@@ -155,67 +179,11 @@ jobs:
 
       - name: Build PR body
         if: steps.check.outputs.has_data == 'true'
-        run: |
-          python << 'PYEOF'
-          import json, os, glob
-
-          status_dir = "data/.status"
-          statuses = {}
-          for f in sorted(glob.glob(os.path.join(status_dir, "*.json"))):
-              with open(f) as fh:
-                  s = json.load(fh)
-                  statuses[s["repo"]] = s["status"]
-
-          total = len(statuses)
-          passed = sum(1 for v in statuses.values() if v == "success")
-
-          rows = "\n".join(
-              f"| {repo} | {'✅' if s == 'success' else '❌'} |"
-              for repo, s in sorted(statuses.items())
-          )
-
-          header = "## Automated Theseus Data Engine Run\n\n"
-          table = "| Repo | Status |\n|------|--------|\n"
-          total_row = f"| **Total** | **{passed}/{total} completed** |\n\n"
-          footer = ("This pull request contains the latest pre-computed "
-                    "persistence data for the tracked repositories.\n\n"
-                    "**Trigger:** Monthly Schedule / Workflow Dispatch")
-          body = header + table + rows + "\n" + total_row + footer
-          with open("pr-body.md", "w") as f:
-              f.write(body)
-          PYEOF
+        run: python scripts/workflow.py build-pr-body
 
       - name: Validate graph files
         if: steps.check.outputs.has_data == 'true'
-        run: |
-          python << 'PYEOF'
-          import json, glob, sys
-
-          files = sorted(glob.glob("data/processed/*.json"))
-          if not files:
-              print("No processed files found to validate.")
-              sys.exit(1)
-
-          errors = 0
-          for f in files:
-              try:
-                  with open(f) as fh:
-                      data = json.load(fh)
-                  assert "snapshots" in data, f"Missing snapshots in {f}"
-                  assert "fossils" in data, f"Missing fossils in {f}"
-                  for snap in data["snapshots"]:
-                      assert "snapshot_date" in snap, f"Missing snapshot_date in {f}"
-                      assert "composition" in snap, f"Missing composition in {f}"
-                  print(f"  ✓ {f}")
-              except (json.JSONDecodeError, AssertionError, KeyError) as e:
-                  print(f"  ✗ {f}: {e}")
-                  errors += 1
-
-          if errors:
-              print(f"Validation failed: {errors} error(s)")
-              sys.exit(1)
-          print("All graph files validated.")
-          PYEOF
+        run: python scripts/workflow.py validate-graph-files
 
       - name: Create or update pull request
         if: steps.check.outputs.has_data == 'true'

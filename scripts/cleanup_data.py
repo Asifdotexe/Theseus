@@ -9,14 +9,10 @@ so the frontend only sees ``snapshot_date`` + ``composition`` per entry.
 
 import json
 import logging
-import os
 import sys
 from pathlib import Path
 
-# Ensure sibling imports work in all invocation contexts
-_SCRIPTS_DIR = Path(__file__).resolve().parent
-if str(_SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS_DIR))
+import _path_guard  # noqa: F401  # pylint: disable=unused-import
 
 from _data_io import load_snapshot_data, save_snapshot_data
 from _utils import load_config

@@ -42,17 +42,12 @@ Two concrete fossil types are discovered by the pipeline:
 
 import concurrent.futures
 import logging
-import os
-import sys
 import threading
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Ensure sibling imports work in all invocation contexts
-_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
-if _SCRIPTS_DIR not in sys.path:
-    sys.path.insert(0, _SCRIPTS_DIR)
+import _path_guard  # noqa: F401  # pylint: disable=unused-import
 
 from _utils import run_command
 
@@ -269,7 +264,7 @@ class BlameRunner:
         logger.info("  Blaming %d files (%d workers)...", len(files), self.max_workers)
         age_distribution: dict[str, int] = defaultdict(int)
 
-        def _accumulate(file_path: str, raw_output: str) -> None:
+        def _accumulate(_file_path: str, raw_output: str) -> None:
             for year, count in parse_blame_year_counts(raw_output).items():
                 age_distribution[year] += count
 
