@@ -52,7 +52,7 @@ def build_pr_body(
         "**Trigger:** Monthly Schedule / Workflow Dispatch"
     )
     body = header + table + rows + "\n" + total_row + footer
-    Path(out_file).write_text(body)
+    Path(out_file).write_text(body, encoding="utf-8")
 
 
 def validate_graph_files(data_dir: str = "data/processed") -> None:
@@ -68,13 +68,17 @@ def validate_graph_files(data_dir: str = "data/processed") -> None:
     for f in files:
         try:
             data = json.loads(f.read_text())
-            assert "snapshots" in data, f"Missing snapshots in {f}"
-            assert "fossils" in data, f"Missing fossils in {f}"
+            if "snapshots" not in data:
+                raise ValueError(f"Missing snapshots in {f}")
+            if "fossils" not in data:
+                raise ValueError(f"Missing fossils in {f}")
             for snap in data["snapshots"]:
-                assert "snapshot_date" in snap, f"Missing snapshot_date in {f}"
-                assert "composition" in snap, f"Missing composition in {f}"
+                if "snapshot_date" not in snap:
+                    raise ValueError(f"Missing snapshot_date in {f}")
+                if "composition" not in snap:
+                    raise ValueError(f"Missing composition in {f}")
             print(f"  {f.name}")
-        except (json.JSONDecodeError, AssertionError, KeyError) as e:
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
             print(f"  {f.name}: {e}")
             errors += 1
 
