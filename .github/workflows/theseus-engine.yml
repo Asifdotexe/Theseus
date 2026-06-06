@@ -52,7 +52,7 @@ jobs:
       - name: Run pipeline for ${{ matrix.repo }}
         id: pipeline
         continue-on-error: true
-        run: poetry run python scripts/run_pipeline.py --repo "${{ matrix.repo }}" --update-survivor
+        run: poetry run python -m scripts.run_pipeline --repo "${{ matrix.repo }}" --update-survivor
         timeout-minutes: 120
 
       - name: Push data to shared branch
@@ -151,9 +151,6 @@ jobs:
           SAVE_DIR=$(mktemp -d)
           cp -r data/* "$SAVE_DIR"/ 2>/dev/null || true
           git checkout origin/main
-          # Full reset: remove everything from index and all untracked/ignored files
-          git rm -rf --cached . >/dev/null 2>&1 || true
-          git clean -fdx >/dev/null 2>&1 || true
           mkdir -p data/raw data/processed data/.status
           cp -r "$SAVE_DIR"/* data/ 2>/dev/null || true
           rm -rf "$SAVE_DIR"

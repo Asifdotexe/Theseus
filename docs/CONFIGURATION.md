@@ -72,7 +72,7 @@ Paste this template into the `repositories` array in `theseus.config.json`:
 Then run the pipeline to generate the data:
 
 ```bash
-python scripts/run_pipeline.py --repo REPO-NAME
+python -m scripts.run_pipeline --repo REPO-NAME
 ```
 
 This single command clones the repository, runs quarterly/monthly snapshot analysis, discovers both genesis and survivor fossils, and writes two files:
