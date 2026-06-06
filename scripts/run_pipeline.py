@@ -1,6 +1,10 @@
 """
 Unified orchestration script for the Theseus data pipeline.
 
+Usage::
+
+    python -m scripts.run_pipeline [--repo NAME] [--reprocess YYYY-MM] [--update-survivor]
+
 Runs all three stages in sequence on one or more repositories:
 
 1. **Analyse** (snapshot generation via ``analyse_repository``)
@@ -30,10 +34,10 @@ import os
 import sys
 import time
 
-import _path_guard  # noqa: F401  # pylint: disable=unused-import
+import scripts._path_guard  # noqa: F401  # pylint: disable=unused-import
 
-from _utils import load_config
-from cleanup_data import cleanup_data as run_cleanup
+from scripts._utils import load_config
+from scripts.cleanup_data import cleanup_data as run_cleanup
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +82,7 @@ def run_pipeline(
 
     # ── Stage 1: Analyse ──────────────────────────────────────────────
     logger.info("═══ STAGE 1: Snapshot analysis ═══")
-    from analyse_repository import (
+    from scripts.analyse_repository import (
         process_repository,
     )
 
@@ -98,7 +102,7 @@ def run_pipeline(
             had_failures = True
 
     # ── Stage 2: Fossils ───────────────────────────────────────────────
-    from add_fossils import backfill_fossils, update_survivor_fossils
+    from scripts.add_fossils import backfill_fossils, update_survivor_fossils
 
     repo_urls = {
         r["name"]: f"https://github.com/{r['repo']}.git"

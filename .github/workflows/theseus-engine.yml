@@ -52,7 +52,9 @@ jobs:
       - name: Run pipeline for ${{ matrix.repo }}
         id: pipeline
         continue-on-error: true
-        run: poetry run python scripts/run_pipeline.py --repo "${{ matrix.repo }}" --update-survivor
+        env:
+          REPO_NAME: ${{ matrix.repo }}
+        run: poetry run python -m scripts.run_pipeline --repo "$REPO_NAME" --update-survivor
         timeout-minutes: 120
 
       - name: Push data to shared branch
@@ -149,13 +151,10 @@ jobs:
           fi
           echo "Shared branch has orphaned history. Rebasing onto main..."
           SAVE_DIR=$(mktemp -d)
-          cp -r data/* "$SAVE_DIR"/ 2>/dev/null || true
+          cp -a data/. "$SAVE_DIR"/ 2>/dev/null || true
           git checkout origin/main
-          # Full reset: remove everything from index and all untracked/ignored files
-          git rm -rf --cached . >/dev/null 2>&1 || true
-          git clean -fdx >/dev/null 2>&1 || true
           mkdir -p data/raw data/processed data/.status
-          cp -r "$SAVE_DIR"/* data/ 2>/dev/null || true
+          cp -a "$SAVE_DIR"/. data/ 2>/dev/null || true
           rm -rf "$SAVE_DIR"
           git add data/
           git -c user.name="github-actions[bot]" \
