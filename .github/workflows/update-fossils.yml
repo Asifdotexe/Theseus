@@ -1,0 +1,68 @@
+name: Update Fossils
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: update-fossils
+  cancel-in-progress: false
+
+jobs:
+  update-fossils:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+
+      - name: Update fossils
+        run: poetry run python scripts/update_fossils.py
+        timeout-minutes: 180
+
+      - name: Clean up temp repos
+        run: rm -rf temp_fossil_repos
+
+      - name: Push to chore/fossil-update
+        run: |
+          mkdir -p /tmp/fossil-save
+          cp -r data/. /tmp/fossil-save/ 2>/dev/null || true
+
+          git reset --hard HEAD 2>/dev/null || true
+          git clean -fd 2>/dev/null || true
+
+          git fetch origin chore/fossil-update 2>/dev/null || true
+          if git show-ref --verify refs/remotes/origin/chore/fossil-update 2>/dev/null; then
+            git checkout chore/fossil-update
+          else
+            git checkout -b chore/fossil-update HEAD
+            git rm -rf --cached . >/dev/null 2>&1 || true
+          fi
+
+          mkdir -p data/raw data/processed
+          cp -r /tmp/fossil-save/. data/ 2>/dev/null || true
+
+          git add data/
+          if git diff --cached --quiet; then
+            echo "No fossil changes to commit."
+            exit 0
+          fi
+
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "chore: update fossils for $(date -u +%Y-%m-%d)"
+
+          git push origin chore/fossil-update --force
