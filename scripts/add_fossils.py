@@ -6,38 +6,7 @@ snapshot data.
 
 Fossil data model
 -----------------
-A **fossil** is a single source-code line whose author-timestamp is the oldest
-ever found in a given scope.  Each fossil records:
-
-``timestamp``
-    Unix-epoch author-time.
-``file``
-    Relative file path.
-``content``
-    The actual source line text.
-``year``
-    4-digit year derived from ``timestamp``.
-``commit``
-    First 7 characters of the commit that last modified this line.
-``view_commit``
-    The git ref (commit hash or branch name) at which the file is checked out.
-``line``
-    1-based line number within the file.
-
-Two concrete fossil types are discovered by this script:
-
-  **Genesis** (Historical Fossil)
-      The single oldest-authored line *ever* to exist in the repository.
-      Found by scanning the earliest commits sorted by author-time, blaming
-      only the files that were *added* in each commit, and returning the line
-      with the smallest author-timestamp across all scanned commits.
-      An early-exit heuristic stops after ``stale_limit`` consecutive commits
-      that fail to improve the oldest-yet result.
-
-  **Survivor** (Living Fossil)
-      The single oldest-authored line that *still exists* at the current HEAD.
-      Found by blaming every tracked file on the default branch and returning
-      the line with the smallest author-timestamp.
+See ``_data_io.py`` for the canonical fossil schema definition.
 
 Modes
 -----
@@ -53,8 +22,6 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-
-import _path_guard  # noqa: F401  # pylint: disable=unused-import
 
 from _blame import BlameRunner, _blank_fossil
 from _data_io import load_snapshot_data, save_snapshot_data

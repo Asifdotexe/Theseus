@@ -13,20 +13,7 @@ Runs all three stages in sequence on one or more repositories:
 
 Fossil data model
 -----------------
-The pipeline discovers two fossil types per repository:
-
-**Genesis** (Historical Fossil)
-    The single oldest-authored line ever written in the repository.  Found by
-    blaming only files added in each of the earliest commits (sorted by
-    author-time), scanning until *stale_limit* consecutive commits fail to
-    improve the oldest-yet result.
-
-**Survivor** (Living Fossil)
-    The single oldest-authored line that still exists at the current HEAD.
-    Found by blaming every tracked file on the default branch and returning
-    the line with the smallest author-timestamp.
-
-Each fossil stores: ``{timestamp, file, content, year, commit, view_commit, line}``.
+See ``_data_io.py`` for the canonical fossil schema definition.
 """
 
 import logging
@@ -34,7 +21,6 @@ import os
 import sys
 import time
 
-import scripts._path_guard  # noqa: F401  # pylint: disable=unused-import
 
 from scripts._utils import load_config
 from scripts.cleanup_data import cleanup_data as run_cleanup

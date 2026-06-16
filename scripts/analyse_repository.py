@@ -32,14 +32,12 @@ import time
 from collections import defaultdict
 from itertools import groupby
 
-import _path_guard  # noqa: F401  # pylint: disable=unused-import
-
 from _blame import BlameRunner
 from _data_io import load_snapshot_data, save_snapshot_data
+from _repo import clone_repository, ensure_repo_ready
 from _utils import (
     count_repo_lines,
     get_changed_files,
-    get_default_branch,
     get_tracked_files,
     load_config,
     remove_path,
@@ -47,18 +45,6 @@ from _utils import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def clone_repository(repo_slug: str, clone_dir: str) -> None:
-    """
-    Clone a GitHub repository into a local directory.
-
-    :param repo_slug: GitHub ``owner/name`` slug (e.g. ``'facebook/react'``).
-    :param clone_dir: Local path to clone into.
-    """
-    logger.info("Cloning %s into %s...", repo_slug, clone_dir)
-    repo_url = f"https://github.com/{repo_slug}.git"
-    run_command(["git", "clone", repo_url, clone_dir])
 
 
 def get_snapshot_periods(repo_path: str) -> list[tuple[str, str]]:
@@ -284,27 +270,6 @@ def _filter_snapshots(
     return result
 
 
-def _ensure_repo_ready(repo_slug: str, repo_name: str, temp_repo_path: str) -> None:
-    """Clone or fetch the repository so it's ready for analysis."""
-    if not os.path.exists(temp_repo_path):
-        clone_repository(repo_slug, temp_repo_path)
-        return
-
-    logger.info("Repository %s already exists locally. Fetching latest...", repo_name)
-    run_command(["git", "fetch", "--all"], cwd=temp_repo_path)
-    default_branch = get_default_branch(temp_repo_path)
-    if default_branch == "HEAD":
-        raise RuntimeError(
-            f"[{repo_name}] Cannot determine default branch after fetch. "
-            "Tried: main, master, develop, origin/HEAD."
-        )
-    run_command(
-        ["git", "checkout", "-B", default_branch, f"origin/{default_branch}"],
-        cwd=temp_repo_path,
-    )
-    run_command(["git", "pull"], cwd=temp_repo_path)
-
-
 def _find_baseline(
     historical_snapshots: list[dict], first_new_period: str | None,
 ) -> tuple[str, dict[str, dict[str, int]]] | None:
@@ -438,7 +403,7 @@ def process_repository(
     output_json_path = os.path.join(data_dir, "raw", f"{repo_name}_data.json")
 
     try:
-        _ensure_repo_ready(repo_slug, repo_name, temp_repo_path)
+        ensure_repo_ready(repo_slug, repo_name, temp_repo_path)
 
         state = load_snapshot_data(output_json_path)
         historical_snapshots = state["snapshots"]

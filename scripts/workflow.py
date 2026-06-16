@@ -11,8 +11,6 @@ import json
 import sys
 from pathlib import Path
 
-import _path_guard  # noqa: F401  # pylint: disable=unused-import
-
 
 def discover_repos(config_path: str = "theseus.config.json") -> list[str]:
     """Return list of repository names from the config file."""

@@ -11,33 +11,7 @@ across file lists.  Two post-processing modes are exposed:
 
 Fossil data model
 -----------------
-A **fossil** is a single source-code line whose author-timestamp is the
-oldest ever found in a given scope.  Each fossil records:
-
-``timestamp``
-    Unix-epoch author-time.
-``file``
-    Relative file path.
-``content``
-    The actual source line text.
-``year``
-    4-digit year derived from ``timestamp``.
-``commit``
-    First 7 characters of the commit hash that last modified this line.
-``view_commit``
-    The git ref (commit hash or branch name) at which the file is checked out.
-``line``
-    1-based line number within the file.
-
-Two concrete fossil types are discovered by the pipeline:
-
-  **Genesis** — the single oldest-authored line *ever* to exist in the repo.
-  Found by blaming only the files added in each of the earliest commits
-  (sorted by author-time), scanning until ``stale_limit`` consecutive commits
-  fail to improve the oldest-yet result.
-
-  **Survivor** — the single oldest-authored line that *still exists* at the
-  current HEAD.  Found by blaming every tracked file on the default branch.
+See ``_data_io.py`` for the canonical fossil schema definition.
 """
 
 import concurrent.futures
@@ -46,8 +20,6 @@ import threading
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
-
-import _path_guard  # noqa: F401  # pylint: disable=unused-import
 
 from _utils import run_command
 
