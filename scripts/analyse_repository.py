@@ -32,10 +32,10 @@ import time
 from collections import defaultdict
 from itertools import groupby
 
-from _blame import BlameRunner
-from _data_io import load_snapshot_data, save_snapshot_data
-from _repo import clone_repository, ensure_repo_ready
-from _utils import (
+from scripts._blame import BlameRunner
+from scripts._data_io import load_snapshot_data, save_snapshot_data
+from scripts._repo import clone_repository, ensure_repo_ready
+from scripts._utils import (
     count_repo_lines,
     get_changed_files,
     get_tracked_files,

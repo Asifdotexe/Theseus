@@ -5,7 +5,7 @@ Repository management utilities for the Theseus pipeline.
 import logging
 import os
 
-from _utils import get_default_branch, run_command
+from scripts._utils import get_default_branch, run_command
 
 logger = logging.getLogger(__name__)
 

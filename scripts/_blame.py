@@ -21,7 +21,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from _utils import run_command
+from scripts._utils import run_command
 
 logger = logging.getLogger(__name__)
 

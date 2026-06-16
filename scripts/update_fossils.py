@@ -14,10 +14,10 @@ import logging
 import sys
 from pathlib import Path
 
-from _data_io import load_snapshot_data
-from _utils import load_config, remove_path
-from add_fossils import backfill_fossils, update_survivor_fossils
-from cleanup_data import generate_graph_data
+from scripts._data_io import load_snapshot_data
+from scripts._utils import load_config, remove_path
+from scripts.add_fossils import backfill_fossils, update_survivor_fossils
+from scripts.cleanup_data import generate_graph_data
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)

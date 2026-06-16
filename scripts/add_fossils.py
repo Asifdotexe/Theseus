@@ -23,9 +23,9 @@ import logging
 import sys
 from pathlib import Path
 
-from _blame import BlameRunner, _blank_fossil
-from _data_io import load_snapshot_data, save_snapshot_data
-from _utils import (
+from scripts._blame import BlameRunner, _blank_fossil
+from scripts._data_io import load_snapshot_data, save_snapshot_data
+from scripts._utils import (
     get_default_branch,
     get_tracked_files,
     load_config,

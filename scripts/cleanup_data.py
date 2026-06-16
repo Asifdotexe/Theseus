@@ -12,8 +12,8 @@ import logging
 import sys
 from pathlib import Path
 
-from _data_io import load_snapshot_data, save_snapshot_data
-from _utils import load_config
+from scripts._data_io import load_snapshot_data, save_snapshot_data
+from scripts._utils import load_config
 
 logger = logging.getLogger(__name__)
 
