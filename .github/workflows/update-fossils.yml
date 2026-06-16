@@ -33,9 +33,6 @@ jobs:
         run: poetry run python scripts/update_fossils.py
         timeout-minutes: 180
 
-      - name: Clean up temp repos
-        run: rm -rf temp_fossil_repos
-
       - name: Push to chore/fossil-update
         run: |
           mkdir -p /tmp/fossil-save
