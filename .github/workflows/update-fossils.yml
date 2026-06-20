@@ -33,7 +33,6 @@ jobs:
         run: |
           poetry run python -m scripts.add_fossils
           poetry run python -m scripts.cleanup_data
-        timeout-minutes: 180
 
       - name: Push to chore/fossil-update
         env:
