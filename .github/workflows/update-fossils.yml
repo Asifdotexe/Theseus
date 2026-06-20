@@ -31,8 +31,8 @@ jobs:
 
       - name: Update fossils
         run: |
-          poetry run python scripts/add_fossils.py
-          poetry run python scripts/cleanup_data.py
+          poetry run python -m scripts.add_fossils
+          poetry run python -m scripts.cleanup_data
         timeout-minutes: 180
 
       - name: Push to chore/fossil-update
