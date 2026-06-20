@@ -46,17 +46,21 @@ jobs:
       - name: Run pipeline for ${{ matrix.repo }}
         id: pipeline
         continue-on-error: true
-        run: poetry run python -m scripts.run_pipeline --repo "${{ matrix.repo }}" --update-survivor
+        env:
+          REPO_NAME: ${{ matrix.repo }}
+        run: poetry run python -m scripts.run_pipeline --repo "$REPO_NAME" --update-survivor
         timeout-minutes: 120
 
       - name: Save status
+        env:
+          REPO_NAME: ${{ matrix.repo }}
         run: |
           mkdir -p data/.status
           STATUS="${{ steps.pipeline.outcome == 'success' && 'success' || 'failure' }}"
-          echo "{\"repo\": \"${{ matrix.repo }}\", \"status\": \"$STATUS\", \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > "data/.status/${{ matrix.repo }}.json"
+          echo "{\"repo\": \"$REPO_NAME\", \"status\": \"$STATUS\", \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > "data/.status/$REPO_NAME.json"
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
         with:
           name: data-${{ matrix.repo }}
           path: |
@@ -76,7 +80,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download all data artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v4
         with:
           path: .
           pattern: data-*

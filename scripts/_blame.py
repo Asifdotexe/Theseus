@@ -200,7 +200,7 @@ class BlameRunner:
         if not files:
             return {}
         logger.info(
-            "  Blaming %d changed files (%d workers)...",
+            "  Blaming %d changed files (%s workers)...",
             len(files),
             self.max_workers,
         )
