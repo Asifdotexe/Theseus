@@ -12,10 +12,8 @@ import logging
 import sys
 from pathlib import Path
 
-import _path_guard  # noqa: F401  # pylint: disable=unused-import
-
-from _data_io import load_snapshot_data, save_snapshot_data
-from _utils import load_config
+from scripts._data_io import load_snapshot_data, save_snapshot_data
+from scripts._utils import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +21,8 @@ GRAPH_FIELDS = frozenset({"snapshot_date", "composition"})
 
 
 def _clean_snapshots(snapshots: list[dict]) -> list[dict]:
-    """Remove future-year composition keys and total_lines from snapshots."""
+    """Remove future-year composition keys from snapshots."""
     for snapshot in snapshots:
-        snapshot.pop("total_lines", None)
         snapshot_date = snapshot.get("snapshot_date")
         if snapshot_date:
             max_year = int(snapshot_date[:4])
@@ -40,7 +37,7 @@ def cleanup_raw(data_dir: str) -> bool:
     """
     Clean and minify raw data files in ``data_dir/raw/``.
 
-    Removes future-year composition entries and ``total_lines`` fields.
+    Removes future-year composition entries.
     Writes back minified to the same location.
 
     :param data_dir: Path to the ``data/`` directory.

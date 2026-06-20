@@ -12,10 +12,9 @@ import json
 import logging
 import os
 import shutil
-import stat
 import subprocess
 import sys
-import time
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -198,62 +197,5 @@ def count_repo_lines(repo_path: str | None = None) -> int:
 
 
 def remove_path(path: str) -> None:
-    """
-    Remove a file or directory using OS-native fast deletion.
-
-    Uses ``cmd /c rd /s /q`` on Windows and ``rm -rf`` on Unix,
-    falling back to ``shutil.rmtree`` on failure.
-
-    :param path: Path to the file or directory to remove.
-    """
-    if not os.path.exists(path):
-        return
-
-    if os.name == "nt":
-        try:
-            subprocess.run(
-                ["cmd", "/c", "rd", "/s", "/q", path],
-                capture_output=True,
-                timeout=30,
-                check=False,
-            )
-            if not os.path.exists(path):
-                return
-        except (subprocess.SubprocessError, OSError):
-            pass
-    else:
-        try:
-            subprocess.run(
-                ["rm", "-rf", path],
-                capture_output=True,
-                timeout=30,
-                check=False,
-            )
-            if not os.path.exists(path):
-                return
-        except (subprocess.SubprocessError, OSError):
-            pass
-
-    # Fallback: retry with shutil.rmtree, fixing permissions on each retry
-    def _handle_remove_readonly(func, path, _exc):
-        try:
-            current_mode = os.stat(path).st_mode
-            os.chmod(
-                path,
-                current_mode | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH,
-            )
-            func(path)
-        except PermissionError:
-            pass
-        except Exception:  # noqa: BLE001
-            pass
-
-    for attempt in range(3):
-        try:
-            shutil.rmtree(path, onexc=_handle_remove_readonly)
-            break
-        except Exception:  # noqa: BLE001
-            if attempt < 2:
-                time.sleep(2**attempt)
-            else:
-                logger.warning("Failed to clean up %s after 3 attempts", path)
+    """Safely remove a directory tree."""
+    shutil.rmtree(path, ignore_errors=True)

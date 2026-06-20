@@ -11,15 +11,6 @@ import json
 import sys
 from pathlib import Path
 
-import _path_guard  # noqa: F401  # pylint: disable=unused-import
-
-
-def discover_repos(config_path: str = "theseus.config.json") -> list[str]:
-    """Return list of repository names from the config file."""
-    with open(config_path, encoding="utf-8") as f:
-        config = json.load(f)
-    return [r["name"] for r in config.get("repositories", [])]
-
 
 def build_pr_body(
     status_dir: str = "data/.status", out_file: str = "pr-body.md"
@@ -92,17 +83,14 @@ def main() -> None:
     """CLI entry point: dispatch to subcommand."""
     command = sys.argv[1] if len(sys.argv) > 1 else ""
 
-    if command == "discover-repos":
-        names = discover_repos()
-        print(json.dumps(names))
-    elif command == "build-pr-body":
+    if command == "build-pr-body":
         build_pr_body()
     elif command == "validate-graph-files":
         validate_graph_files()
     else:
         print(f"Usage: python {sys.argv[0]} <command>", file=sys.stderr)
         print(
-            "Commands: discover-repos, build-pr-body, validate-graph-files",
+            "Commands: build-pr-body, validate-graph-files",
             file=sys.stderr,
         )
         sys.exit(1)

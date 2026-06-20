@@ -32,14 +32,13 @@ import time
 from collections import defaultdict
 from itertools import groupby
 
-import _path_guard  # noqa: F401  # pylint: disable=unused-import
+from scripts._blame import BlameRunner
+from scripts._data_io import load_snapshot_data, save_snapshot_data
 
-from _blame import BlameRunner
-from _data_io import load_snapshot_data, save_snapshot_data
-from _utils import (
+from scripts._utils import (
+    get_default_branch,
     count_repo_lines,
     get_changed_files,
-    get_default_branch,
     get_tracked_files,
     load_config,
     remove_path,
@@ -47,18 +46,6 @@ from _utils import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def clone_repository(repo_slug: str, clone_dir: str) -> None:
-    """
-    Clone a GitHub repository into a local directory.
-
-    :param repo_slug: GitHub ``owner/name`` slug (e.g. ``'facebook/react'``).
-    :param clone_dir: Local path to clone into.
-    """
-    logger.info("Cloning %s into %s...", repo_slug, clone_dir)
-    repo_url = f"https://github.com/{repo_slug}.git"
-    run_command(["git", "clone", repo_url, clone_dir])
 
 
 def get_snapshot_periods(repo_path: str) -> list[tuple[str, str]]:
@@ -98,26 +85,11 @@ def get_snapshot_periods(repo_path: str) -> list[tuple[str, str]]:
     return sorted(filtered.items(), key=lambda x: x[0])
 
 
-def _resolve_worker_count() -> int:
-    """
-    Determine the number of parallel blame workers.
 
-    Default is ``min(8, cpu_count * 2)``.  Override via ``BLAME_WORKERS``
-    environment variable (clamped 1-100).
-
-    :return: Worker count (int).
-    """
-    max_workers = min(8, (os.cpu_count() or 1) * 2)
-    try:
-        if "BLAME_WORKERS" in os.environ:
-            max_workers = max(1, min(int(os.environ["BLAME_WORKERS"]), 100))
-    except ValueError:
-        pass
-    return max_workers
 
 
 def _blame_full_snapshot(
-    repo_path: str, max_workers: int
+    repo_path: str, max_workers: int | None
 ) -> dict[str, dict[str, int]]:
     """
     Full blame of all tracked files at the current checkout.
@@ -135,7 +107,7 @@ def _blame_incremental_snapshot(
     commit_hash: str,
     prev_commit: str,
     prev_compositions: dict[str, dict[str, int]],
-    max_workers: int,
+    max_workers: int | None,
 ) -> dict[str, dict[str, int]]:
     """
     Incremental blame via ``git diff-tree`` + carry-forward of unchanged files.
@@ -186,7 +158,7 @@ def _verify_line_count_guard(
     repo_path: str,
     age_distribution: dict[str, int],
     file_compositions: dict[str, dict[str, int]],
-    max_workers: int,
+    max_workers: int | None,
 ) -> tuple[dict[str, int], dict[str, dict[str, int]]]:
     """
     Verify blame total against ``wc -l``; fall back to full blame on mismatch.
@@ -245,7 +217,7 @@ def analyze_single_snapshot(
         ``file_compositions`` is ``{file_path: {year: count}}``.
     """
     run_command(["git", "checkout", commit_hash], cwd=repo_path)
-    max_workers = _resolve_worker_count()
+    max_workers = None
 
     file_compositions = (
         _blame_incremental_snapshot(
@@ -282,27 +254,6 @@ def _filter_snapshots(
         if period not in processed_periods or (reprocess and period == reprocess):
             result.append((period, commit))
     return result
-
-
-def _ensure_repo_ready(repo_slug: str, repo_name: str, temp_repo_path: str) -> None:
-    """Clone or fetch the repository so it's ready for analysis."""
-    if not os.path.exists(temp_repo_path):
-        clone_repository(repo_slug, temp_repo_path)
-        return
-
-    logger.info("Repository %s already exists locally. Fetching latest...", repo_name)
-    run_command(["git", "fetch", "--all"], cwd=temp_repo_path)
-    default_branch = get_default_branch(temp_repo_path)
-    if default_branch == "HEAD":
-        raise RuntimeError(
-            f"[{repo_name}] Cannot determine default branch after fetch. "
-            "Tried: main, master, develop, origin/HEAD."
-        )
-    run_command(
-        ["git", "checkout", "-B", default_branch, f"origin/{default_branch}"],
-        cwd=temp_repo_path,
-    )
-    run_command(["git", "pull"], cwd=temp_repo_path)
 
 
 def _find_baseline(
@@ -419,6 +370,29 @@ def _process_snapshots_by_year(
         )
 
 
+def ensure_repo_ready(repo_slug: str, repo_name: str, temp_repo_path: str) -> None:
+    """Clone or fetch the repository so it's ready for analysis."""
+    if not os.path.exists(temp_repo_path):
+        logger.info("Cloning %s into %s...", repo_slug, temp_repo_path)
+        repo_url = f"https://github.com/{repo_slug}.git"
+        run_command(["git", "clone", repo_url, temp_repo_path])
+        return
+
+    logger.info("Repository %s already exists locally. Fetching latest...", repo_name)
+    run_command(["git", "fetch", "--all"], cwd=temp_repo_path)
+    default_branch = get_default_branch(temp_repo_path)
+    if default_branch == "HEAD":
+        raise RuntimeError(
+            f"[{repo_name}] Cannot determine default branch after fetch. "
+            "Tried: main, master, develop, origin/HEAD."
+        )
+    run_command(
+        ["git", "checkout", "-B", default_branch, f"origin/{default_branch}"],
+        cwd=temp_repo_path,
+    )
+    run_command(["git", "pull"], cwd=temp_repo_path)
+
+
 def process_repository(
     repo_slug: str, data_dir: str, reprocess: str | None = None
 ) -> None:
@@ -438,7 +412,7 @@ def process_repository(
     output_json_path = os.path.join(data_dir, "raw", f"{repo_name}_data.json")
 
     try:
-        _ensure_repo_ready(repo_slug, repo_name, temp_repo_path)
+        ensure_repo_ready(repo_slug, repo_name, temp_repo_path)
 
         state = load_snapshot_data(output_json_path)
         historical_snapshots = state["snapshots"]

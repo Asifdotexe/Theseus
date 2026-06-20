@@ -521,8 +521,6 @@ class TheseusVisualizer {
     const repoInfo = this.manifest.find((r) => r.name === this.currentRepo);
     if (!repoInfo || !repoInfo.milestones) return;
 
-    const tooltip = this;
-
     repoInfo.milestones.forEach((m) => {
       const milestoneDate = new Date(m.date + "-01");
       const xPos = xScale(milestoneDate);
@@ -956,7 +954,6 @@ class TheseusVisualizer {
 
   updateInsights() {
     if (!this.points || this.points.length === 0) return;
-    const first = this.points[0];
     const last = this.points[this.points.length - 1];
 
     // 1. Birth Year (Genesis)
@@ -1116,12 +1113,6 @@ class TheseusVisualizer {
         }
       });
     });
-  }
-
-  createSVGElement(tag, attrs = {}) {
-    const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
-    Object.entries(attrs).forEach(([key, val]) => el.setAttribute(key, val));
-    return el;
   }
 
   showLoading(show) {
