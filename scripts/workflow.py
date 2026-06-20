@@ -12,9 +12,6 @@ import sys
 from pathlib import Path
 
 
-
-
-
 def build_pr_body(
     status_dir: str = "data/.status", out_file: str = "pr-body.md"
 ) -> None:
