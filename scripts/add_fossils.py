@@ -10,8 +10,8 @@ See ``_data_io.py`` for the canonical fossil schema definition.
 
 Modes
 -----
-  (no flags)          Full backfill: recompute both Genesis and Survivor
-                      for all repos.
+  (no flags)          Auto-detect: if genesis is missing, run full backfill.
+                      Otherwise, run incremental survivor-only refresh.
   --update-survivor   Incremental: only refresh the Survivor fossil.
                       Skips writing to disk if the file:line:commit has not
                       changed.  Used by the GitHub Actions workflow.
@@ -425,6 +425,36 @@ def update_survivor_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
     return _process_each_repo(data_dir, repo_urls, _update_survivor_one, log_prefix="Checking survivor for")
 
 
+def _check_genesis(data_dir: str, repo_name: str) -> str | None:
+    raw_path = Path(data_dir) / "raw" / f"{repo_name}_data.json"
+    if not raw_path.exists():
+        return None
+    try:
+        data = load_snapshot_data(str(raw_path))
+    except (FileNotFoundError, ValueError, KeyError):
+        return None
+    return data.get("fossils", {}).get("genesis", {}).get("file", "")
+
+
+def auto_update_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
+    """
+    Auto-detect missing fossils per repository and run the appropriate mode:
+    * No genesis fossil found → full backfill (genesis + survivor)
+    * Genesis exists → incremental survivor-only refresh
+    """
+    had_failures = False
+    for repo_name, repo_url in repo_urls.items():
+        if not _check_genesis(data_dir, repo_name):
+            logger.info("%s: missing genesis → full backfill", repo_name)
+            if backfill_fossils(data_dir, {repo_name: repo_url}):
+                had_failures = True
+        else:
+            logger.info("%s: genesis found → survivor incremental", repo_name)
+            if update_survivor_fossils(data_dir, {repo_name: repo_url}):
+                had_failures = True
+    return had_failures
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -482,8 +512,8 @@ def main() -> None:
         logger.info("Mode: incremental survivor update")
         had_failures = update_survivor_fossils(data_dir, selected)
     else:
-        logger.info("Mode: full backfill (genesis + survivor)")
-        had_failures = backfill_fossils(data_dir, selected)
+        logger.info("Mode: auto-detect (genesis + survivor or survivor-only)")
+        had_failures = auto_update_fossils(data_dir, selected)
 
     if had_failures:
         logger.error("One or more repositories failed to update. Exiting non-zero.")

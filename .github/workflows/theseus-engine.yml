@@ -18,22 +18,18 @@ jobs:
       - uses: actions/checkout@v4
       - id: extract
         run: |
-          REPOS=$(python scripts/workflow.py discover-repos)
+          REPOS=$(jq -c '[.repositories[].name]' theseus.config.json)
           echo "repos=$REPOS" >> "$GITHUB_OUTPUT"
 
   analyze:
     needs: discover-repos
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     strategy:
       fail-fast: false
       matrix:
         repo: ${{ fromJSON(needs.discover-repos.outputs.repos) }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -43,11 +39,9 @@ jobs:
 
       - name: Install Poetry
         run: pipx install poetry
-        shell: bash
 
       - name: Install dependencies
         run: poetry install --no-interaction --no-root
-        shell: bash
 
       - name: Run pipeline for ${{ matrix.repo }}
         id: pipeline
@@ -55,67 +49,21 @@ jobs:
         run: poetry run python -m scripts.run_pipeline --repo "${{ matrix.repo }}" --update-survivor
         timeout-minutes: 120
 
-      - name: Push data to shared branch
+      - name: Save status
         run: |
+          mkdir -p data/.status
           STATUS="${{ steps.pipeline.outcome == 'success' && 'success' || 'failure' }}"
-          RAW_FILE="data/raw/${{ matrix.repo }}_data.json"
-          GRAPH_FILE="data/processed/${{ matrix.repo }}_graph.json"
+          echo "{\"repo\": \"${{ matrix.repo }}\", \"status\": \"$STATUS\", \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > "data/.status/${{ matrix.repo }}.json"
 
-          mkdir -p /tmp/data-save
-
-          if [ -f "$RAW_FILE" ]; then
-            cp "$RAW_FILE" /tmp/data-save/
-          fi
-          if [ -f "$GRAPH_FILE" ]; then
-            cp "$GRAPH_FILE" /tmp/data-save/
-          fi
-
-          echo "{\"repo\": \"${{ matrix.repo }}\", \"status\": \"$STATUS\", \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
-            > /tmp/data-save/status.json
-
-          git reset --hard HEAD 2>/dev/null || true
-          # Discard generated data but keep gitignored files (-fd, no -x)
-          git clean -fd 2>/dev/null || true
-
-          git fetch origin chore/monthly-data-update 2>/dev/null || true
-          if git show-ref --verify refs/remotes/origin/chore/monthly-data-update 2>/dev/null; then
-            git checkout chore/monthly-data-update
-          else
-            git checkout -b chore/monthly-data-update HEAD
-            git rm -rf --cached . >/dev/null 2>&1 || true
-          fi
-
-          mkdir -p data/raw data/processed data/.status
-          if [ -f "/tmp/data-save/${{ matrix.repo }}_data.json" ]; then
-            cp "/tmp/data-save/${{ matrix.repo }}_data.json" data/raw/
-          fi
-          if [ -f "/tmp/data-save/${{ matrix.repo }}_graph.json" ]; then
-            cp "/tmp/data-save/${{ matrix.repo }}_graph.json" data/processed/
-          fi
-          cp "/tmp/data-save/status.json" "data/.status/${{ matrix.repo }}.json"
-
-          git add data/
-          if git diff --cached --quiet; then
-            echo "No changes for ${{ matrix.repo }}, skipping commit"
-            exit 0
-          fi
-
-          git -c user.name="github-actions[bot]" \
-              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              commit -m "chore: update ${{ matrix.repo }} persistence data"
-
-          for attempt in 1 2 3 4 5; do
-            if git push origin chore/monthly-data-update 2>/dev/null; then
-              echo "Push successful (attempt $attempt)"
-              exit 0
-            fi
-            echo "Push failed (attempt $attempt), rebasing..."
-            sleep $((attempt * 5))
-            git fetch origin chore/monthly-data-update
-            git rebase origin/chore/monthly-data-update
-          done
-          echo "Push failed after 5 attempts"
-          exit 1
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-${{ matrix.repo }}
+          path: |
+            data/raw/${{ matrix.repo }}_data.json
+            data/processed/${{ matrix.repo }}_graph.json
+            data/.status/${{ matrix.repo }}.json
+          retention-days: 1
 
   create-pr:
     needs: analyze
@@ -126,67 +74,35 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download all data artifacts
+        uses: actions/download-artifact@v4
         with:
-          fetch-depth: 0
-
-      - name: Fetch and checkout shared branch
-        id: shared
-        run: |
-          git fetch origin chore/monthly-data-update 2>/dev/null || true
-          if git show-ref --verify refs/remotes/origin/chore/monthly-data-update 2>/dev/null; then
-            git checkout chore/monthly-data-update
-            echo "has_branch=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_branch=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Fix shared branch ancestry
-        if: steps.shared.outputs.has_branch == 'true'
-        run: |
-          if git merge-base --is-ancestor origin/main HEAD 2>/dev/null; then
-            echo "Shared branch has common history with main."
-            exit 0
-          fi
-          echo "Shared branch has orphaned history. Rebasing onto main..."
-          SAVE_DIR=$(mktemp -d)
-          cp -a data/. "$SAVE_DIR"/ 2>/dev/null || true
-          git checkout origin/main
-          mkdir -p data/raw data/processed data/.status
-          cp -a "$SAVE_DIR"/. data/ 2>/dev/null || true
-          rm -rf "$SAVE_DIR"
-          git add data/
-          git -c user.name="github-actions[bot]" \
-              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              commit -m "fix: rebase shared data onto main"
-          # Force-push is safe here: create-pr is the only job at this point,
-          # and the orphaned branch must be replaced to share history with main
-          git push origin HEAD:chore/monthly-data-update --force
-          git fetch origin chore/monthly-data-update
-          git checkout -B chore/monthly-data-update origin/chore/monthly-data-update
-
-      - name: Check for status markers
-        id: check
-        if: steps.shared.outputs.has_branch == 'true'
-        run: |
-          if [ -d "data/.status" ] && compgen -G "data/.status/*.json" > /dev/null 2>&1; then
-            echo "has_data=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_data=false" >> "$GITHUB_OUTPUT"
-          fi
+          path: .
+          pattern: data-*
+          merge-multiple: true
 
       - name: Build PR body
-        if: steps.check.outputs.has_data == 'true'
         run: python scripts/workflow.py build-pr-body
 
       - name: Validate graph files
-        if: steps.check.outputs.has_data == 'true'
         run: python scripts/workflow.py validate-graph-files
 
       - name: Create or update pull request
-        if: steps.check.outputs.has_data == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B chore/monthly-data-update
+          git add data/
+          if git diff --cached --quiet; then
+            echo "No changes, skipping PR creation."
+            exit 0
+          fi
+          git commit -m "chore: update persistence data"
+          git push origin chore/monthly-data-update --force
+
           PR_NUMBER=$(gh pr list --head chore/monthly-data-update --json number --jq '.[0].number')
           if [ -z "$PR_NUMBER" ]; then
             gh pr create \

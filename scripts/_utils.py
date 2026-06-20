@@ -197,10 +197,5 @@ def count_repo_lines(repo_path: str | None = None) -> int:
 
 
 def remove_path(path: str) -> None:
-    p = Path(path)
-    if not p.exists():
-        return
-    if p.is_file() or p.is_symlink():
-        p.unlink(missing_ok=True)
-    else:
-        shutil.rmtree(p, ignore_errors=True)
+    """Safely remove a directory tree."""
+    shutil.rmtree(path, ignore_errors=True)

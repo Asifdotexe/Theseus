@@ -37,18 +37,7 @@ _HEX = frozenset("0123456789abcdef")
 # .lower() since git blame porcelain always emits lowercase hex hashes.
 def _is_hash(s: str) -> bool:
     """Fast check if *s* is a 40- or 64-character lowercase hex string."""
-    n = len(s)
-    if n == 40:
-        for c in s:
-            if c not in _HEX:
-                return False
-        return True
-    if n == 64:
-        for c in s:
-            if c not in _HEX:
-                return False
-        return True
-    return False
+    return len(s) in (40, 64) and not s.strip("0123456789abcdef")
 
 
 # Fossil helper
@@ -166,12 +155,7 @@ def find_oldest_fossil_in_blame(
                 fossil["file"] = file_path
                 fossil["content"] = content
                 fossil["year"] = str(datetime.fromtimestamp(ts, timezone.utc).year)
-                commit_hash = current_commit_data.get("commit", "")
-                fossil["commit"] = (
-                    commit_hash[:7]
-                    if isinstance(commit_hash, str)
-                    else str(commit_hash)[:7]
-                )
+                fossil["commit"] = current_commit_data.get("commit", "")[:7]
                 fossil["view_commit"] = view_commit
                 fossil["line"] = line_num
         else:
@@ -188,24 +172,6 @@ def find_oldest_fossil_in_blame(
     return fossil
 
 
-# Single-file year-count (for incremental blame)
-def blame_single_file_year_counts(
-    repo_path: str | Path, file_path: str
-) -> dict[str, int]:
-    """
-    Run ``git blame --line-porcelain`` on a single file and return its
-    year-to-line-count map.
-
-    :param repo_path: Path to the git repository.
-    :param file_path: Relative path of the file to blame.
-    :return: ``{year: line_count}`` for this file, or empty dict on failure.
-    """
-    raw = blame_single_file(repo_path, file_path)
-    if raw:
-        return parse_blame_year_counts(raw)
-    return {}
-
-
 class BlameRunner:
     """
     Encapsulates parallel git blame execution with progress logging.
@@ -220,28 +186,9 @@ class BlameRunner:
     :param max_workers: Maximum number of parallel blame processes (default 8).
     """
 
-    def __init__(self, repo_path: str | Path, max_workers: int = 8):
+    def __init__(self, repo_path: str | Path, max_workers: int | None = 8):
         self.repo_path = repo_path
         self.max_workers = max_workers
-
-    def blame_year_counts(self, files: list[str]) -> dict[str, int]:
-        """
-        Aggregate ``{year: line_count}`` across all given files.
-
-        :param files: List of relative file paths to blame.
-        :return: ``{year: count}`` aggregated across all files.
-        """
-        if not files:
-            return {}
-        logger.info("  Blaming %d files (%d workers)...", len(files), self.max_workers)
-        age_distribution: dict[str, int] = defaultdict(int)
-
-        def _accumulate(_file_path: str, raw_output: str) -> None:
-            for year, count in parse_blame_year_counts(raw_output).items():
-                age_distribution[year] += count
-
-        self._blame_files_internal(files, _accumulate)
-        return dict(age_distribution)
 
     def blame_file_compositions(self, files: list[str]) -> dict[str, dict[str, int]]:
         """
