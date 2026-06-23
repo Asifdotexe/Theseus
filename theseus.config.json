@@ -80,12 +80,6 @@
       ]
     },
     {
-      "name": "tensorflow",
-      "description": "TensorFlow: Open-source machine learning framework.",
-      "repo": "tensorflow/tensorflow",
-      "milestones": []
-    },
-    {
       "name": "claude-code",
       "description": "Claude's agentic CLI tool for local coding tasks.",
       "repo": "anthropics/claude-code",
