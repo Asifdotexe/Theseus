@@ -215,3 +215,4 @@ __marimo__/
 !.env.example
 presentation/
 temp_fossil_repos/
+docs/theseus_blog.md

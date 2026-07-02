@@ -1,5 +1,12 @@
 {
   "dataDir": "data",
+  "globalMilestones": [
+    {
+      "date": "2022-12",
+      "title": "ChatGPT Released",
+      "description": "OpenAI releases ChatGPT to the public, marking a major milestone in AI coding tools."
+    }
+  ],
   "repositories": [
     {
       "name": "langchain",
