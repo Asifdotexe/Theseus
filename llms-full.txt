@@ -1,0 +1,19 @@
+# Ship of Theseus - Full Context
+
+Ship of Theseus is a D3.js visualization tool built by Asif Sayyed. 
+
+## Technical Architecture
+- **Frontend:** HTML, CSS, and Vanilla JavaScript
+- **Visualization:** D3.js for SVG rendering, stacked area charts, scale conversions (Linear/Log), and view toggling.
+- **Data Source:** Pre-processed JSON configurations (`theseus.config.json`) and data files (`data/repo_name.json`) containing code survival matrices over time.
+
+## Philosophy
+The project takes its name from the Ship of Theseus paradox: if you replace every line of code over time, is it still the same repository?
+
+## Features
+- **Chrono vs Identity Modes:** Switch between a chronological timeline and an identity view to see how code from different years overlaps and survives.
+- **Fossil Finder:** Highlights the "Historical Fossil" (the oldest line ever written in the repo) and the "Living Fossil" (the oldest line still present today).
+- **Tooltips & Scrubber:** An interactive scrubber that shows the exact breakdown of surviving lines per year at any given point in time.
+
+## Author
+Built by Asif Sayyed, a data scientist interested in data visualization and philosophy.
