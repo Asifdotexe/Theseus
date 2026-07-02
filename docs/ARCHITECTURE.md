@@ -1,18 +1,16 @@
-# Architecture & Internals
+# Architecture & internals
 
-The Ship of Theseus engine is composed of a disconnected backend (data generator) and frontend (UI visualizer). They communicate entirely via an intermediary static JSON format. 
+The project has a Python script to generate data and a web frontend to display it. They communicate via static JSON files. 
 
-This architecture allows the system to remain highly secure, completely serverless, and free to host using static GitHub Pages. (woohoo, who doesn't like free things?)
+This setup allows the site to be hosted on static platforms like GitHub Pages.
 
----
+## The data pipeline (`analyse_repository.py`)
 
-## The Data Pipeline (`analyse_repository.py`)
+The data generator runs `git` shell commands directly instead of using Python libraries like `GitPython` or `pygit2`. This is significantly faster because the native `git` binary is optimized in C.
 
-The heart of the application is a python script that orchestrates `git` shell commands. Because `git` is heavily optimized in C, shelling out to the native git binary is orders of magnitude faster than relying on pure Python implementations like `GitPython` or `pygit2`.
+### Incremental snapshot generation
 
-### Incremental Snapshot Generation
-
-To view codebase health *over time*, we need snapshots of the codebase. Instead of re-parsing every commit since the dawn of time, the engine works incrementally.
+The script needs snapshots of the codebase over time. Rather than parsing every commit, it works incrementally.
 
 ```mermaid
 flowchart TD
@@ -28,19 +26,17 @@ flowchart TD
     I --> J[Append Snapshot to JSON]
 ```
 
-### The `git blame` Parallelization
+### Git blame parallelization
 
-When checking out a specific month's commit, the system needs to `git blame` every single valid file in the repository.
+When checking out a specific month's commit, the script runs `git blame` on every tracked file.
 
-1. **Ls-Files Filter:** We run `git ls-files` to get solely the tracked text files (excluding binary garbage).
-2. **ThreadPool Executor:** The script fires off multiple parallel workers to run `git blame --line-porcelain` concurrently across CPUs.
-3. **Regex Extraction:** It rips the UNIX timestamps out of the porcelain format and bins them into "years".
+1. **ls-files filter:** Runs `git ls-files` to get only tracked text files.
+2. **ThreadPool execution:** Uses multiple workers to run `git blame --line-porcelain` concurrently.
+3. **Regex extraction:** Extracts UNIX timestamps from the porcelain output and groups them by year.
 
----
+## Fossil extraction (`add_fossils.py`)
 
-## The Fossil Extraction (`add_fossils.py`)
-
-Fossils are pointers to specific, historically significant lines of code that serve as fun easter-eggs for the UI. They are evaluated completely independently to prevent slowing down the main incremental snapshot pipeline.
+Fossils are pointers to the oldest lines of code. They are calculated independently so they don't slow down the main pipeline.
 
 ```mermaid
 stateDiagram-v2
@@ -62,19 +58,17 @@ stateDiagram-v2
     extractor --> AppendMetadataJSON
 ```
 
-### Historical (Genesis) Protocol
-Repos imported from SVN/Mercurial can have wildly inaccurate committer timestamps. We resolve this by running `git log --all --pretty=format:%H %at` to sort all commits explicitly by `author-time`, stepping through the absolute oldest `genesis_depth` commits, and extracting the first line of code ever pushed to the repo's history regardless of branch logic.
+### Historical (Genesis) protocol
+Repositories imported from SVN or Mercurial often have inaccurate committer timestamps. We resolve this by running `git log --all --pretty=format:%H %at` to sort commits by `author-time`, stepping through the oldest `genesis_depth` commits, and extracting the first line of code pushed to the history.
 
-### Living (Survivor) Protocol
-This focuses strictly on the default branch `HEAD`. It recursively blames the latest state of the codebase. Because it's checking `HEAD`, this value frequently moves as old code is finally refactored out.
+### Living (Survivor) protocol
+This runs strictly on the default branch `HEAD`. It recursively blames the latest state of the codebase to find the oldest line still in use. This value shifts as old code gets refactored out.
 
----
+## Data delivery via UI (`app.js`)
 
-## Data Delivery via Vanilla UI (`app.js`)
+The frontend uses Vanilla JavaScript without a build system to keep the repository simple.
 
-The UI is intentionally lightweight. We avoided heavy React or bundle-chain systems to ensure the repository remains simple and easy to fork.
-
-The UI loads `theseus.config.json` via the browser Fetch API, builds out a repository selection grid dynamically, and upon clicking a card, pulls the corresponding static `data/{repo}_data.json`.
+The UI fetches `theseus.config.json` via the browser Fetch API, builds a repository selection grid, and loads the corresponding `data/{repo}_data.json` when a user selects a repository.
 
 ```mermaid
 sequenceDiagram

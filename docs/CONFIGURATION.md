@@ -1,8 +1,8 @@
-# ⚙️ Configuration Guide
+# Configuration guide
 
-The Ship of Theseus engine operates centrally off a single file: `theseus.config.json`. By modifying this file, you instruct both the Python backend and the JavaScript frontend on which repositories to scrape and display.
+The Python backend and the JavaScript frontend both read from `theseus.config.json` to determine which repositories to analyze and display.
 
-## Base Schema (`theseus.config.json`)
+## Base schema (`theseus.config.json`)
 
 ```json
 {
@@ -20,39 +20,34 @@ The Ship of Theseus engine operates centrally off a single file: `theseus.config
 }
 ```
 
-### Global Settings
+### Global settings
 
-* `dataDir` *(string)*: The relative path to the directory where the engine saves output JSONs. Usually `"./data"`. The frontend uses this to know where to fetch data.
+* `dataDir` *(string)*: The relative path where the Python script saves JSON files. The frontend uses this to fetch data. Default is `"./data"`.
 
-### Repositories Array
+### Repositories array
 
-The `repositories` array takes objects consisting of the following key attributes:
-
-| Key | Type | Description | Example |
-| :--- | :---: | :--- | :--- |
-| `name` | *String* | A safe, unique identifier. Used as the repo slug (`--repo NAME`) and as the data filenames — `data/raw/{name}_data.json` (raw with blame metadata) and `data/processed/{name}_graph.json` (graph for frontend). Must be kebab-case. | `"django"` |
-| `repo` | *String* | The GitHub repository namespace. The engine resolves this to `https://github.com/owner/repo.git`. | `"django/django"` |
-| `description` | *String* | A short UI subheading clarifying what the project is. | `"The web framework for perfectionists with deadlines."` |
-| `milestones` | *Array* | An optional list of significant events to display on the timeline. | `[{"date": "2024-01", "title": "Launch"}]` |
-
----
-
-## Milestone Structure
-
-The `milestones` array contains objects with the following properties:
+The `repositories` array takes objects with the following keys:
 
 | Key | Type | Description | Example |
 | :--- | :---: | :--- | :--- |
-| `date` | *String* | The date of the milestone in `YYYY-MM` format. | `"2024-06"` |
-| `title` | *String* | A short, catchy name for the event shown in tooltips. | `"Monorepo Migration"` |
-| `description` | *String* | A concise explanation of the event. | `"Unified all integrations into a single repository."` |
+| `name` | *String* | A unique identifier used for the repo slug (`--repo NAME`) and filenames. Must be kebab-case. | `"django"` |
+| `repo` | *String* | The GitHub repository namespace (resolves to `https://github.com/owner/repo.git`). | `"django/django"` |
+| `description` | *String* | A short subheading clarifying the project's purpose. | `"The web framework for perfectionists with deadlines."` |
+| `milestones` | *Array* | An optional list of events to display on the timeline. | `[{"date": "2024-01", "title": "Launch"}]` |
 
+## Milestone structure
 
----
+Objects in the `milestones` array use these properties:
 
-## Adding a New Repository
+| Key | Type | Description | Example |
+| :--- | :---: | :--- | :--- |
+| `date` | *String* | The date in `YYYY-MM` format. | `"2024-06"` |
+| `title` | *String* | The event name shown in tooltips. | `"Monorepo Migration"` |
+| `description` | *String* | A short explanation of the event. | `"Unified all integrations into a single repository."` |
 
-Paste this template into the `repositories` array in `theseus.config.json`:
+## Adding a new repository
+
+Add this block to the `repositories` array in `theseus.config.json`:
 
 ```json
     {
@@ -69,20 +64,20 @@ Paste this template into the `repositories` array in `theseus.config.json`:
     }
 ```
 
-Then run the pipeline to generate the data:
+Run the pipeline to generate the data:
 
 ```bash
 python -m scripts.run_pipeline --repo REPO-NAME
 ```
 
-This single command clones the repository, runs quarterly/monthly snapshot analysis, discovers both genesis and survivor fossils, and writes two files:
-- `data/raw/{name}_data.json` — master data with per-file blame metadata (pipeline state)
-- `data/processed/{name}_graph.json` — cleaned graph data for the frontend (only `snapshot_date` + `composition` per entry)
+This command clones the repository, runs the snapshot analysis, extracts the fossils, and writes two files:
+- `data/raw/{name}_data.json` — raw data with per-file blame metadata.
+- `data/processed/{name}_graph.json` — graph data formatted for the frontend.
 
-The frontend auto-discovers the new data from `data/processed/` — no additional changes needed.
+The frontend automatically detects the new data in `data/processed/`.
 
 > [!NOTE]
-> Data filenames are derived from `name`: `data/raw/{name}_data.json` and `data/processed/{name}_graph.json`. There is no `file` field to maintain.
+> Data filenames are derived directly from the `name` field. You do not need to specify file paths manually in the configuration.
 
 > [!CAUTION]
-> Avoid modifying the output data within `data/` manually. Doing so can corrupt the incremental snapshot cache, forcing a full re-clone and re-analysis.
+> Do not modify the output data in `data/` manually. Doing so corrupts the incremental snapshot cache, forcing a full re-analysis.
