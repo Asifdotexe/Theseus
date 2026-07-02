@@ -45,6 +45,7 @@ class TheseusVisualizer {
       // Fallback for backward compatibility, but normally expected to be under 'repositories'
       this.manifest =
         data.repositories || (Array.isArray(data) ? data : [data]);
+      this.globalMilestones = data.globalMilestones || [];
 
       this.renderSelectors();
       this.setupModeToggle();
@@ -519,9 +520,12 @@ class TheseusVisualizer {
 
   renderMilestoneMarkers(g, chartWidth, chartHeight, xScale) {
     const repoInfo = this.manifest.find((r) => r.name === this.currentRepo);
-    if (!repoInfo || !repoInfo.milestones) return;
+    const repoMilestones = repoInfo && repoInfo.milestones ? repoInfo.milestones : [];
+    const allMilestones = [...this.globalMilestones, ...repoMilestones];
 
-    repoInfo.milestones.forEach((m) => {
+    if (allMilestones.length === 0) return;
+
+    allMilestones.forEach((m) => {
       const milestoneDate = new Date(m.date + "-01");
       const xPos = xScale(milestoneDate);
 
@@ -536,15 +540,26 @@ class TheseusVisualizer {
           .style("cursor", "pointer");
 
         marker
+          .append("line")
+          .attr("x1", 0)
+          .attr("y1", 16)
+          .attr("x2", 0)
+          .attr("y2", chartHeight)
+          .attr("stroke", "var(--nebula)")
+          .attr("stroke-width", 1)
+          .attr("stroke-dasharray", "4,4")
+          .style("opacity", 0.5);
+
+        marker
           .append("text")
           .attr("x", 0)
-          .attr("y", 18)
+          .attr("y", 8)
           .attr("text-anchor", "middle")
           .attr("font-size", "14px")
-          .attr("fill", "oklch(68% 0.14 195)")
+          .attr("fill", "var(--nebula)")
           .text("★")
           .style("opacity", 0.8)
-          .style("filter", "drop-shadow(0 0 4px oklch(68% 0.14 195 / 0.6))");
+          .style("filter", "drop-shadow(0 0 4px oklch(52% 0.22 285 / 0.6))");
 
         marker.append("title").text(m.title + ": " + m.description);
 
@@ -557,6 +572,12 @@ class TheseusVisualizer {
             .duration(animDur)
             .attr("font-size", "18px")
             .style("opacity", 1);
+          d3.select(this)
+            .select("line")
+            .transition()
+            .duration(animDur)
+            .style("opacity", 1)
+            .attr("stroke-width", 2);
         };
 
         const shrink = function () {
@@ -566,6 +587,12 @@ class TheseusVisualizer {
             .duration(animDur)
             .attr("font-size", "14px")
             .style("opacity", 0.8);
+          d3.select(this)
+            .select("line")
+            .transition()
+            .duration(animDur)
+            .style("opacity", 0.5)
+            .attr("stroke-width", 1);
         };
 
         marker
@@ -858,9 +885,12 @@ class TheseusVisualizer {
     // Find milestone if close to current date
     let milestoneHTML = "";
     const repoInfo = this.manifest.find((r) => r.name === this.currentRepo);
-    if (repoInfo && repoInfo.milestones) {
+    const repoMilestones = repoInfo && repoInfo.milestones ? repoInfo.milestones : [];
+    const allMilestones = [...this.globalMilestones, ...repoMilestones];
+
+    if (allMilestones.length > 0) {
       const pointDate = new Date(point.date);
-      for (const m of repoInfo.milestones) {
+      for (const m of allMilestones) {
         const milestoneDate = new Date(m.date + "-01");
         const monthsDiff = Math.abs(
           (pointDate - milestoneDate) / (1000 * 60 * 60 * 24 * 30),
