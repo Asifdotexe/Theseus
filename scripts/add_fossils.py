@@ -21,6 +21,7 @@ Modes
 import argparse
 import logging
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from scripts._blame import BlameRunner, _blank_fossil
@@ -62,8 +63,8 @@ def _get_files_added_in_commit(repo_path: str | Path, commit_hash: str) -> list[
     Return files that were *added* (not modified, not renamed) by this commit.
 
     Uses ``git diff-tree --diff-filter=A`` which only lists new files
-    introduced in the commit, compared to its parent(s).  For the root commit
-    (no parent) the command fails so we fall back to ``git ls-files``.
+    introduced in the commit, compared to its parent(s). The ``--root`` flag
+    allows it to work gracefully on root commits.
 
     :param repo_path: Path to the git repository.
     :param commit_hash: The commit to inspect.
@@ -76,6 +77,7 @@ def _get_files_added_in_commit(repo_path: str | Path, commit_hash: str) -> list[
                 "diff-tree",
                 "--no-commit-id",
                 "-r",
+                "--root",
                 "--diff-filter=A",
                 "--name-only",
                 commit_hash,
@@ -84,8 +86,7 @@ def _get_files_added_in_commit(repo_path: str | Path, commit_hash: str) -> list[
         )
         return files_output.splitlines() if files_output else []
     except RuntimeError:
-        files_output = run_command(["git", "ls-files"], cwd=str(repo_path))
-        return files_output.splitlines()
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -93,26 +94,19 @@ def _get_files_added_in_commit(repo_path: str | Path, commit_hash: str) -> list[
 # ---------------------------------------------------------------------------
 
 
-def get_genesis_fossil(
-    repo_path: str | Path,
-    genesis_depth: int = 50,
-    stale_limit: int = 5,
-) -> dict:
+def get_genesis_fossil(repo_path: str | Path) -> dict:
     """
     Historical Fossil: the oldest line **ever authored** in this repo.
 
     Strategy
     --------
-    Sort ALL commits by author-time, then scan the oldest ``genesis_depth``
-    commits.  Within each commit, blame only files that were *added* in that
-    commit (files from older commits have already been blamed in previous
-    iterations).  An early-exit heuristic stops after ``stale_limit``
-    consecutive commits that fail to improve the oldest-yet result.
+    Find the absolute oldest commit by author-time. Since all lines introduced
+    in a commit share that commit's author-time, any line added in the absolute
+    oldest commit is tied for the oldest line in the repository. We can directly
+    extract the first line of the first alphabetically sorted file added in this
+    commit without checking out the working tree or running `git blame`.
 
     :param repo_path: Path to the git repository.
-    :param genesis_depth: Maximum number of oldest commits to scan (default 50).
-    :param stale_limit: Stop after this many consecutive commits with no
-                        improvement (default 5).
     :return: A fossil dict for the oldest line ever found, or a blank fossil
              if no lines could be blamed.
     """
@@ -136,59 +130,41 @@ def get_genesis_fossil(
         logger.warning("No commits found in repo.")
         return _blank_fossil()
 
+    # Sort to place the oldest commit first
     commit_pairs.sort(key=lambda x: x[1])
-    oldest_commits = [(c[0], c[1]) for c in commit_pairs[:genesis_depth]]
 
-    global_oldest = _blank_fossil()
-    stale_count = 0
-
-    for i, (commit, author_ts) in enumerate(oldest_commits):
-        logger.info(
-            "  Genesis scan: commit %d/%d (%s, at=%s)",
-            i + 1,
-            len(oldest_commits),
-            commit[:7],
-            author_ts,
-        )
-        try:
-            run_command(["git", "checkout", "--force", commit], cwd=str(repo_path))
-        except RuntimeError as e:
-            logger.warning("  Could not checkout %s: %s", commit[:7], e)
-            continue
-
+    for commit, author_ts in commit_pairs:
         files = _get_files_added_in_commit(repo_path, commit)
         if not files:
-            stale_count += 1
-            if stale_count >= stale_limit:
-                logger.info(
-                    "  Stopping early after %d commits (%d consecutive with no new "
-                    "files to blame).",
-                    i + 1,
-                    stale_limit,
-                )
-                break
             continue
 
-        fossil = BlameRunner(repo_path, max_workers=20).blame_oldest_fossil(
-            files, view_commit=commit
-        )
+        files.sort()
+        for file_path in files:
+            try:
+                # Use git show to read file contents without checking out the commit
+                content_output = run_command(
+                    ["git", "show", f"{commit}:{file_path}"],
+                    cwd=str(repo_path),
+                )
+            except RuntimeError:
+                continue
 
-        if fossil["file"] and fossil["timestamp"] < global_oldest["timestamp"]:
-            global_oldest = fossil
-            stale_count = 0
-        else:
-            stale_count += 1
+            for i, line in enumerate(content_output.splitlines()):
+                content = line.strip()
+                if content:
+                    fossil = _blank_fossil()
+                    fossil["timestamp"] = author_ts
+                    fossil["file"] = file_path
+                    fossil["content"] = content
+                    fossil["year"] = str(datetime.fromtimestamp(author_ts, timezone.utc).year)
+                    fossil["commit"] = commit[:7]
+                    fossil["view_commit"] = commit
+                    fossil["line"] = i + 1
+                    logger.info("  Found Genesis fossil in commit %s", commit[:7])
+                    return fossil
 
-        if stale_count >= stale_limit:
-            logger.info(
-                "  Stopping early after %d commits (%d consecutive without "
-                "improvement).",
-                i + 1,
-                stale_limit,
-            )
-            break
-
-    return global_oldest
+    logger.warning("No non-empty lines found in any commit.")
+    return _blank_fossil()
 
 
 # ---------------------------------------------------------------------------
