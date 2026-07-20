@@ -10,31 +10,34 @@ The primary workflow generates incremental JSON snapshots every month and commit
 journey
     title Monthly Pipeline Action execution
     section Bootstrapping
-      Clone Primary Repository: 5: GitHub Actions
-      Read Config File: 5: Python
+      Discover Configured Repositories: 5: GitHub Actions
       Checkout Specific Repositories: 3: Python
-    section Analysis
-      Perform Incremental Snapshot: 4: Python (analyse_repository.py)
-      Blame Lines / Evaluate Entropy: 4: Python
-      Update Survivor Fossils: 3: Python (add_fossils.py)
+    section Analysis (run_pipeline.py)
+      Perform Incremental Snapshot: 4: Python
+      Update Survivor Fossils: 3: Python
+      Clean & Minify data payloads: 4: Python
     section Persistence
-      Clean & Minify data payloads: 5: Python (cleanup_data.py)
+      Build PR Body & Validate: 5: Python
       Commit Diff Data: 5: git config user.name "github-actions[bot]"
-      Push JSON to Origin: 5: GitHub Actions
+      Create Pull Request: 5: GitHub CLI (gh pr)
 ```
 
-### 1. `analyse_repository.py`
-The script reads `theseus.config.json` and checks the local `data/` cache. If the latest snapshot in the JSON is `2025-02` and the current month is `2025-05`, the script checks out the repository at `2025-03`, `2025-04`, and `2025-05` to catch up.
+### 1. `run_pipeline.py`
+The workflow orchestrates analysis across all configured repositories in a matrix job by calling `run_pipeline.py --update-survivor`. This script manages the three pipeline stages: incremental snapshot analysis, survivor fossil extraction, and payload cleanup.
 
-### 2. `add_fossils.py --update-survivor`
+### 2. Updating Survivor Fossils
 Genesis fossils rarely change because they point to the very first commit. The UI primarily tracks the "Living Fossil," which moves when old code is deleted. 
 
-To save processing time during CI, the Action only runs `add_fossils.py` with the `--update-survivor` flag, updating the `view_commit` tip to track code changes without re-evaluating the entire history.
+To save processing time during CI, the Action runs the pipeline with the `--update-survivor` flag, updating the `view_commit` tip to track code changes without re-evaluating the entire history.
 
 ### 3. Committing updates
-After the scripts run, the Action checks if the output files in `data/` have changed. 
+After the pipeline runs across all repositories, the `create-pr` job downloads the combined data artifacts and checks if any files have changed. 
 
-If there are modifications, the GitHub Actions bot commits the new JSON payloads to `main`. 
+If there are modifications, the GitHub Actions bot commits the new JSON payloads to a branch (`chore/monthly-data-update`) and automatically opens or updates a Pull Request to `main`. 
 
 > [!TIP]
-> Ensure the Action has Write permissions in the repository settings: `Settings -> Actions -> General -> Workflow permissions -> Read and write permissions`. Otherwise, the commit attempt will return an `HTTP 403` error and fail silently.
+> Ensure the Action has Write permissions in the repository settings: `Settings -> Actions -> General -> Workflow permissions -> Read and write permissions`. Otherwise, the PR creation attempt will return an `HTTP 403` error and fail silently.
+
+## The GitHub Actions workflow (`.github/workflows/update-fossils.yml`)
+
+An additional manual workflow to force-update fossils via `workflow_dispatch`. It runs `add_fossils.py` (which auto-detects and backfills Genesis/Survivor fossils) and `cleanup_data.py`, then commits changes directly to `chore/fossil-update`.
