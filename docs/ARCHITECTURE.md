@@ -17,8 +17,8 @@ flowchart TD
     A[Start: read `theseus.config.json`] --> B{Has Data File?}
     B -- No --> C[Full Clone & 1st Commit]
     B -- Yes --> D[Look at Last Snapshot Date]
-    D --> E[Is Last Snapshot < Current Month?]
-    E -- Yes --> F[Clone & Jump to Next Month]
+    D --> E[Is Last Snapshot < Current Period?]
+    E -- Yes --> F[Clone & Jump to Next Period]
     E -- No --> G[Skip: Up to Date]
     C --> H[Run Git Blame Parallel]
     F --> H
@@ -48,7 +48,7 @@ stateDiagram-v2
         SurvivorFossil: Living Survivor
         
         GenesisFossil --> SortCommits
-        SortCommits --> FindOldestBlamedLine
+        SortCommits --> ExtractFirstLineFromOldestCommit
         
         SurvivorFossil --> CheckoutHEAD
         CheckoutHEAD --> FindOldestStillAlive
@@ -59,7 +59,7 @@ stateDiagram-v2
 ```
 
 ### Historical (Genesis) protocol
-Repositories imported from SVN or Mercurial often have inaccurate committer timestamps. We resolve this by running `git log --all --pretty=format:%H %at` to sort commits by `author-time`, stepping through the oldest `genesis_depth` commits, and extracting the first line of code pushed to the history.
+Repositories imported from SVN or Mercurial often have inaccurate committer timestamps. We resolve this by running `git log --all --pretty=format:%H %at` to sort commits by `author-time`, finding the absolute oldest commit. We then use `git diff-tree` to find files added in this commit and `git show` to directly extract the first line of code pushed to the history, avoiding the overhead of checking out the working tree or running `git blame`.
 
 ### Living (Survivor) protocol
 This runs strictly on the default branch `HEAD`. It recursively blames the latest state of the codebase to find the oldest line still in use. This value shifts as old code gets refactored out.

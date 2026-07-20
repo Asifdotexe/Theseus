@@ -38,16 +38,22 @@ poetry install
 
 ### Analyzing a repository
 
-The script reads from `theseus.config.json`. To run a full analysis:
+The script reads from `theseus.config.json`. To run the full analysis pipeline (snapshot generation, fossil discovery, and data cleanup):
 
 ```bash
-poetry run python scripts/analyse_repository.py
+poetry run python -m scripts.run_pipeline
 ```
 
-To update the pointers to the oldest surviving lines of code (the "fossils"):
+To run it for a specific repository:
 
 ```bash
-poetry run python scripts/add_fossils.py --update-survivor
+poetry run python -m scripts.run_pipeline --repo REPO-NAME
+```
+
+To update the pointers to the oldest surviving lines of code (the "fossils") without re-analyzing snapshots:
+
+```bash
+poetry run python -m scripts.add_fossils --update-survivor
 ```
 
 ### Viewing the chart
