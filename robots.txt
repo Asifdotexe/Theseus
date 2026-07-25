@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://theseus.sayyedasif.com/sitemap.xml
+Sitemap: https://theseus.asifdotexe.workers.dev/sitemap.xml
