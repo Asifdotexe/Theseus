@@ -43,3 +43,13 @@ We added the Web App Manifest to make the site mobile-friendly and improve Light
 - Explicitly allowed AI crawlers (`GPTBot`, `Claude-Web`, `PerplexityBot`, `OAI-SearchBot`) in the `robots.txt` file.
 **Why did we choose to do that:** 
 GEO makes the site highly attractive to AI-powered search engines (like ChatGPT and Perplexity). AI models are trained to extract concise summaries, direct Q&A formats, and authoritative sources. Adding timestamps signals content freshness, the schema provides easily parseable context, and the `robots.txt` changes grant explicit permission for these AI bots to ingest the site's content.
+
+## Goal: Answer Engine Optimization (AEO)
+**Timestamp:** 2026-07-25T15:30:50+05:30
+**What did we do:** 
+- Converted the generic TL;DR text into an explicit AEO Extraction blockquote starting with a direct question: "What is the Ship of Theseus Code Visualizer?".
+- Expanded the FAQ section in the HTML from 2 entries to 7 entries, including definitions of 'fossils'.
+- Expanded the `FAQPage` structured data in the JSON-LD script to match the 7 entries.
+- Ensured all FAQ answers were strictly kept under 50 words and were self-contained.
+**Why did we choose to do that:** 
+AEO focuses heavily on Voice Search and AI answering engines (like Google's AI Overviews). These engines hunt for "Position Zero" featured snippets. By formatting our main description as a direct Q&A blockquote right after the H1, we feed the extraction engines exactly what they want. Furthermore, AEO best practices dictate having at least 6 concise, self-contained FAQs to signal that the page is a rich source of definitive answers. We specifically added the 'fossil' definition as it clarifies domain-specific terminology that AI models might otherwise misinterpret.
