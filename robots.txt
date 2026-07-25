@@ -1,4 +1,14 @@
 User-agent: *
 Allow: /
 
+# Explicitly allow AI crawlers for GEO (Generative Engine Optimization)
+User-agent: GPTBot
+Allow: /
+User-agent: Claude-Web
+Allow: /
+User-agent: PerplexityBot
+Allow: /
+User-agent: OAI-SearchBot
+Allow: /
+
 Sitemap: https://theseus.asifdotexe.workers.dev/sitemap.xml

@@ -36,8 +36,10 @@
                 "author": {
                     "@type": "Person",
                     "name": "Asif Sayyed",
-                    "url": "https://sayyedasif.com/"
-                }
+                    "url": "https://sayyedasif.com/",
+                    "jobTitle": "Data Scientist"
+                },
+                "dateModified": "2026-07-25"
             },
             {
                 "@context": "https://schema.org",
@@ -50,7 +52,27 @@
                     "@type": "Person",
                     "name": "Asif Sayyed",
                     "url": "https://sayyedasif.com/"
-                }
+                },
+                "dateModified": "2026-07-25"
+            },
+            {
+                "@context": "https://schema.org",
+                "@type": "FAQPage",
+                "mainEntity": [{
+                    "@type": "Question",
+                    "name": "What is the Ship of Theseus Code Visualizer?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "The Ship of Theseus Code Visualizer is an open-source tool that analyzes Git repository histories to show how much of a codebase's original code still survives over time."
+                    }
+                }, {
+                    "@type": "Question",
+                    "name": "Why is codebase entropy important?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Codebase entropy shows how quickly software is changing. A stable architecture holds onto old code, while frequent rewrites result in high entropy and rapid loss of original lines."
+                    }
+                }]
             }
         ]
         </script>
@@ -86,11 +108,14 @@
 
         <main class="container">
             <header class="hero">
-                <div class="author-badge">Project by Asif Sayyed</div>
+                <div class="author-badge">Project by Asif Sayyed <span style="opacity: 0.7; margin-left: 10px;">| Last Updated: <time datetime="2026-07-25">July 25, 2026</time></span></div>
                 <h1 class="title">The Ship of Theseus</h1>
                 <p class="subtitle">
                     Track how much of your codebase's original code still
                     survives over time.
+                </p>
+                <p class="tldr" style="max-width: 600px; margin: 0 auto 2rem; font-size: 0.95rem; line-height: 1.5; color: var(--text-secondary); background: var(--surface); padding: 1rem; border-radius: 8px; border: 1px solid var(--border);">
+                    <strong>TL;DR:</strong> Ship of Theseus is an open-source tool that analyzes Git histories to show how quickly software evolves and how much of its original foundation remains.
                 </p>
 
                 <div class="controls-bar">
@@ -430,6 +455,18 @@
                         </div>
                     </div>
                 </details>
+            </section>
+
+            <section class="faq-section" style="margin-top: 4rem;">
+                <h2 style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--text-primary);">Frequently Asked Questions</h2>
+                <div class="faq-item" style="margin-bottom: 1rem;">
+                    <h3 style="font-size: 1.1rem; color: var(--text-primary);">What is the Ship of Theseus Code Visualizer?</h3>
+                    <p style="color: var(--text-secondary); line-height: 1.5;">The Ship of Theseus Code Visualizer is an open-source tool that analyzes Git repository histories to show how much of a codebase's original code still survives over time.</p>
+                </div>
+                <div class="faq-item" style="margin-bottom: 1rem;">
+                    <h3 style="font-size: 1.1rem; color: var(--text-primary);">Why is codebase entropy important?</h3>
+                    <p style="color: var(--text-secondary); line-height: 1.5;">Codebase entropy shows how quickly software is changing. A stable architecture holds onto old code, while frequent rewrites result in high entropy and rapid loss of original lines.</p>
+                </div>
             </section>
 
             <footer class="footer">
