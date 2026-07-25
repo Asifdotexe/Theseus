@@ -88,3 +88,17 @@ According to the `impeccable` layout principles, elements should not default to 
 - Polished the margins of the AEO block to perfectly integrate into the hero's flexbox gap rhythm, removing the arbitrary top and bottom margins so it flows naturally beneath the subtitle.
 **Why did we choose to do that:**
 The `impeccable polish` command demands strict alignment with the existing design system. The FAQ title was a glaring deviation (hero sizing in a regular section), and the typography lacked semantic separation. By assigning the serif font to the questions (narrative) and relying on the parent flex container's gap for spacing, the sections now adhere to the project's precise typography and tonal rules.
+
+## Goal: Comprehensive Architectural and Codebase Audit
+**Timestamp:** 2026-07-25T17:30:00+05:30
+**What did we do:**
+We conducted a highly critical, thorough architectural audit of the entire codebase (frontend and backend) to address scaling bottlenecks, brittleness, and the massive raw JSON dataset issue. We produced an artifact (`architecture_audit.md`) summarizing the findings, which included the recommendation to replace the raw JSON data storage with SQLite or an Append-Only Event Log (JSONL), as well as to modularize the 1,200-line `app.js` "God Object". 
+**Why did we choose to do that:**
+The user specifically requested a review focused on KISS and SOLID principles to simplify the logic and replace the hard-to-review JSON datasets. Storing absolute snapshots of file compositions in JSON for every time period scales terribly (O(Files * Time Periods)) resulting in 21MB files for repos like React, which would break CI limits. Refactoring the data layer and frontend architecture will make the project significantly more predictable, scalable, and maintainable.
+
+## Goal: Establish Baseline Unit Speed & Create Refactoring Plan
+**Timestamp:** 2026-07-25T17:50:00+05:30
+**What did we do:**
+We wrote a benchmarking script (`scripts/benchmark_pipeline.py`) and ran it against the `claude-code` repository to measure the parsing speed of the data pipeline and the exact disk storage bloat. We also created a step-by-step `refactoring_plan.md` outlining exactly how we will decouple the data layer (using serverless append-only JSON) and modularize the frontend `app.js` file, ensuring we have safety nets (tests) before making breaking changes. We did not include a Go/Rust rewrite because the benchmark proved Python is fast enough (1600-3000 lines/sec on incremental blame).
+**Why did we choose to do that:**
+The user wanted to know the "unit speed" of our operations before we optimize upstream, to ensure our changes are data-driven. The benchmark confirmed that the data storage bloat (44x larger than necessary) is the real bottleneck, not the Python parsing logic. The refactoring plan was created to ensure we tackle these issues without breaking the existing codebase.
