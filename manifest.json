@@ -1,0 +1,21 @@
+{
+  "name": "Ship of Theseus Code Visualizer",
+  "short_name": "Theseus",
+  "description": "An interactive data visualization tool that tracks codebase evolution over time.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "assets/theseus_favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/theseus_favicon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

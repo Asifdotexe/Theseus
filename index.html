@@ -23,24 +23,45 @@
         <meta name="twitter:description" content="Track how much of your codebase's original code still survives over time." />
         <meta name="twitter:image" content="https://theseus.asifdotexe.workers.dev/assets/og.webp" />
 
-        <!-- Structured Data (JSON-LD) - WebApplication -->
+        <!-- Structured Data (JSON-LD) - WebApplication and SoftwareSourceCode -->
         <script type="application/ld+json">
-        {
-            "@context": "https://schema.org",
-            "@type": "WebApplication",
-            "name": "Ship of Theseus Code Visualizer",
-            "url": "https://theseus.asifdotexe.workers.dev/",
-            "description": "An interactive data visualization tool that tracks codebase evolution over time.",
-            "applicationCategory": "DeveloperApplication",
-            "author": {
-                "@type": "Person",
-                "name": "Asif Sayyed",
-                "url": "https://sayyedasif.com/"
+        [
+            {
+                "@context": "https://schema.org",
+                "@type": "WebApplication",
+                "name": "Ship of Theseus Code Visualizer",
+                "url": "https://theseus.asifdotexe.workers.dev/",
+                "description": "An interactive data visualization tool that tracks codebase evolution over time.",
+                "applicationCategory": "DeveloperApplication",
+                "author": {
+                    "@type": "Person",
+                    "name": "Asif Sayyed",
+                    "url": "https://sayyedasif.com/"
+                }
+            },
+            {
+                "@context": "https://schema.org",
+                "@type": "SoftwareSourceCode",
+                "name": "Ship of Theseus",
+                "codeRepository": "https://github.com/Asifdotexe/Theseus",
+                "programmingLanguage": ["Python", "JavaScript", "HTML", "CSS"],
+                "description": "A tool that tracks how much of a codebase's original code still survives over time.",
+                "author": {
+                    "@type": "Person",
+                    "name": "Asif Sayyed",
+                    "url": "https://sayyedasif.com/"
+                }
             }
-        }
+        ]
         </script>
 
         <link rel="icon" type="image/png" href="assets/theseus_favicon.png" />
+        <link rel="apple-touch-icon" href="assets/theseus_favicon.png" />
+        <link rel="manifest" href="manifest.json" />
+        
+        <!-- Preload critical assets for Core Web Vitals -->
+        <link rel="preload" href="style.css" as="style" />
+        
         <!-- Typography: Playfair Display (Serif) & JetBrains Mono (Mono) -->
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -53,6 +74,14 @@
     </head>
 
     <body>
+        <noscript>
+            <div style="padding: 20px; background-color: #f8d7da; color: #721c24; text-align: center; font-family: sans-serif;">
+                <strong>JavaScript is required to run the Ship of Theseus code visualizer.</strong><br/>
+                This interactive tool visualizes Git history data using D3.js. 
+                <a href="https://github.com/Asifdotexe/Theseus" style="color: #721c24; font-weight: bold; text-decoration: underline;">Visit the GitHub Repository</a> for more details and screenshots.
+            </div>
+        </noscript>
+        
         <div class="noise-overlay"></div>
 
         <main class="container">
