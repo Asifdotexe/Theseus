@@ -96,3 +96,37 @@ def save_snapshot_data(file_path: str | Path, snapshots: list[dict], fossils: di
     data = {"snapshots": snapshots, "fossils": fossils}
     tmp_path.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
     tmp_path.replace(path)
+
+
+def load_latest_state(file_path: str | Path) -> tuple[str | None, dict | None]:
+    """
+    Load the latest file_compositions state for incremental blame.
+    
+    :param file_path: Path to the state JSON file.
+    :return: (commit_hash, file_compositions) or (None, None) if not found.
+    """
+    path = Path(file_path)
+    if not path.exists():
+        return None, None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data.get("commit_hash"), data.get("file_compositions")
+    except json.JSONDecodeError:
+        logger.warning("%s is corrupted, ignoring state.", file_path)
+        return None, None
+
+
+def save_latest_state(file_path: str | Path, commit_hash: str, file_compositions: dict) -> None:
+    """
+    Save the latest file_compositions state atomically.
+    
+    :param file_path: Destination path.
+    :param commit_hash: The commit hash of the state.
+    :param file_compositions: The file compositions dict.
+    """
+    path = Path(file_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    data = {"commit_hash": commit_hash, "file_compositions": file_compositions}
+    tmp_path.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
+    tmp_path.replace(path)
