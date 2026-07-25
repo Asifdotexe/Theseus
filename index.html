@@ -149,8 +149,9 @@
                     Track how much of your codebase's original code still
                     survives over time.
                 </p>
-                <blockquote class="aeo-extraction" style="max-width: 600px; margin: 0 auto 2rem; font-size: 0.95rem; line-height: 1.5; color: var(--text-secondary); background: var(--surface); padding: 1rem; border-radius: 8px; border: 1px solid var(--border); text-align: left;">
-                    <strong>What is the Ship of Theseus Code Visualizer?</strong> Ship of Theseus is an open-source tool that analyzes Git histories to show how quickly software evolves and how much of its original foundation remains.
+                <blockquote class="aeo-extraction">
+                    <strong>What is the Ship of Theseus Code Visualizer?</strong> 
+                    <span>Ship of Theseus is an open-source tool that analyzes Git histories to show how quickly software evolves and how much of its original foundation remains.</span>
                 </blockquote>
 
                 <div class="controls-bar">
@@ -492,35 +493,37 @@
                 </details>
             </section>
 
-            <section class="faq-section" style="margin-top: 4rem;">
-                <h2 style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--text-primary);">Frequently Asked Questions</h2>
-                <div class="faq-item" style="margin-bottom: 1rem;">
-                    <h3 style="font-size: 1.1rem; color: var(--text-primary);">What is the Ship of Theseus Code Visualizer?</h3>
-                    <p style="color: var(--text-secondary); line-height: 1.5;">The Ship of Theseus Code Visualizer is an open-source tool that analyzes Git repository histories to show how much of a codebase's original code still survives over time.</p>
-                </div>
-                <div class="faq-item" style="margin-bottom: 1rem;">
-                    <h3 style="font-size: 1.1rem; color: var(--text-primary);">Why is codebase entropy important?</h3>
-                    <p style="color: var(--text-secondary); line-height: 1.5;">Codebase entropy shows how quickly software is changing. A stable architecture holds onto old code, while frequent rewrites result in high entropy and rapid loss of original lines.</p>
-                </div>
-                <div class="faq-item" style="margin-bottom: 1rem;">
-                    <h3 style="font-size: 1.1rem; color: var(--text-primary);">How does the visualizer calculate codebase survival?</h3>
-                    <p style="color: var(--text-secondary); line-height: 1.5;">It uses Git history to track each line of code from its creation commit. By comparing historical snapshots, it calculates the exact percentage of original lines still present today.</p>
-                </div>
-                <div class="faq-item" style="margin-bottom: 1rem;">
-                    <h3 style="font-size: 1.1rem; color: var(--text-primary);">What programming languages does the visualizer support?</h3>
-                    <p style="color: var(--text-secondary); line-height: 1.5;">The Ship of Theseus tool analyzes Git commits directly, meaning it is entirely language-agnostic. It works out-of-the-box with Python, JavaScript, HTML, CSS, C++, Rust, and any other text-based language.</p>
-                </div>
-                <div class="faq-item" style="margin-bottom: 1rem;">
-                    <h3 style="font-size: 1.1rem; color: var(--text-primary);">Is this tool free to use?</h3>
-                    <p style="color: var(--text-secondary); line-height: 1.5;">Yes, the Ship of Theseus Code Visualizer is completely free and open-source. You can access the source code on GitHub and use it to analyze your own repositories.</p>
-                </div>
-                <div class="faq-item" style="margin-bottom: 1rem;">
-                    <h3 style="font-size: 1.1rem; color: var(--text-primary);">How do I interpret the visualizer graphs?</h3>
-                    <p style="color: var(--text-secondary); line-height: 1.5;">The chronological mode shows code loss over time, while the identity mode groups remaining code by its original commit. A steep drop indicates major rewrites, while a flat line suggests stable architecture.</p>
-                </div>
-                <div class="faq-item" style="margin-bottom: 1rem;">
-                    <h3 style="font-size: 1.1rem; color: var(--text-primary);">What is a 'fossil' in this context?</h3>
-                    <p style="color: var(--text-secondary); line-height: 1.5;">A fossil is a specific line of code that has survived unchanged over a long period. We track two types: the Historical Fossil (from the repository's origin), and the Living Fossil (the absolute oldest line of code still present in the codebase today).</p>
+            <section class="faq-section">
+                <h2 class="section-title">Frequently Asked Questions</h2>
+                <div class="faq-grid">
+                    <div class="faq-item">
+                        <h3>What is the Ship of Theseus Code Visualizer?</h3>
+                        <p>The Ship of Theseus Code Visualizer is an open-source tool that analyzes Git repository histories to show how much of a codebase's original code still survives over time.</p>
+                    </div>
+                    <div class="faq-item">
+                        <h3>Why is codebase entropy important?</h3>
+                        <p>Codebase entropy shows how quickly software is changing. A stable architecture holds onto old code, while frequent rewrites result in high entropy and rapid loss of original lines.</p>
+                    </div>
+                    <div class="faq-item">
+                        <h3>How does the visualizer calculate codebase survival?</h3>
+                        <p>It uses Git history to track each line of code from its creation commit. By comparing historical snapshots, it calculates the exact percentage of original lines still present today.</p>
+                    </div>
+                    <div class="faq-item">
+                        <h3>What programming languages does the visualizer support?</h3>
+                        <p>The Ship of Theseus tool analyzes Git commits directly, meaning it is entirely language-agnostic. It works out-of-the-box with Python, JavaScript, HTML, CSS, C++, Rust, and any other text-based language.</p>
+                    </div>
+                    <div class="faq-item">
+                        <h3>Is this tool free to use?</h3>
+                        <p>Yes, the Ship of Theseus Code Visualizer is completely free and open-source. You can access the source code on GitHub and use it to analyze your own repositories.</p>
+                    </div>
+                    <div class="faq-item">
+                        <h3>How do I interpret the visualizer graphs?</h3>
+                        <p>The chronological mode shows code loss over time, while the identity mode groups remaining code by its original commit. A steep drop indicates major rewrites, while a flat line suggests stable architecture.</p>
+                    </div>
+                    <div class="faq-item">
+                        <h3>What is a 'fossil' in this context?</h3>
+                        <p>A fossil is a specific line of code that has survived unchanged over a long period. We track two types: the Historical Fossil (from the repository's origin), and the Living Fossil (the absolute oldest line of code still present in the codebase today).</p>
+                    </div>
                 </div>
             </section>
 

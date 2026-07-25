@@ -53,3 +53,38 @@ GEO makes the site highly attractive to AI-powered search engines (like ChatGPT 
 - Ensured all FAQ answers were strictly kept under 50 words and were self-contained.
 **Why did we choose to do that:** 
 AEO focuses heavily on Voice Search and AI answering engines (like Google's AI Overviews). These engines hunt for "Position Zero" featured snippets. By formatting our main description as a direct Q&A blockquote right after the H1, we feed the extraction engines exactly what they want. Furthermore, AEO best practices dictate having at least 6 concise, self-contained FAQs to signal that the page is a rich source of definitive answers. We specifically added the 'fossil' definition as it clarifies domain-specific terminology that AI models might otherwise misinterpret.
+
+## Impeccable Layout Refactoring
+
+**Goal:** `/impeccable layout faq-section`
+**Timestamp:** 2026-07-25T15:43:00+05:30
+**What did we do:**
+- Removed arbitrary inline styles from the FAQ HTML markup in `index.html`.
+- Added semantic `.faq-section`, `.faq-grid`, and `.faq-item` CSS classes to `style.css`.
+- Reorganized the flat list of FAQ items into a responsive CSS Grid (`repeat(auto-fit, minmax(280px, 1fr))`).
+- Standardized vertical and horizontal rhythm using the project's existing spacing scale (`var(--space-xxl)`, `var(--space-xl)`).
+**Why did we choose to do that:**
+Following the impeccable layout guidelines, space is treated as a design tool. The previous flat inline-styled list lacked structural grid alignment and rhythm. We moved away from arbitrary padding values toward semantic tokens and used CSS Grid for the 2D layout to provide a responsive, breathing arrangement of the FAQ content. We chose not to place the items in boxes/cards (to avoid 'card monotony') and instead relied on space and typography for hierarchy.
+
+## Impeccable Layout Refactoring for AEO Extraction
+
+**Goal:** `/impeccable layout aeo-extraction`
+**Timestamp:** 2026-07-25T15:47:00+05:30
+**What did we do:**
+- Removed arbitrary inline styles from the `<blockquote class="aeo-extraction">` tag in `index.html`.
+- Added the `.aeo-extraction` CSS class definition to `style.css` using the existing design system tokens for spacing (`var(--space-xs)`, `var(--space-md)`) and typography (`var(--mist)`, `var(--ice)`).
+- Replaced the hardcoded, bordered, boxed layout with a clean text block that relies solely on spacing, semantic hierarchy, and the `flex-direction: column` structure to separate the bolded question from its answer.
+**Why did we choose to do that:**
+According to the `impeccable` layout principles, elements should not default to being cards unless there is a strong affordance reason. The AEO block is fundamentally an inline text summary, not an actionable component. By removing the harsh borders and background tint, and by utilizing the established spacing scales and font colors, the extraction snippet integrates seamlessly into the page's rhythm while retaining the semantic importance required for SEO/AEO.
+
+## Impeccable Polish for FAQ and AEO Sections
+
+**Goal:** `/impeccable polish faq-section and aeo-extraction`
+**Timestamp:** 2026-07-25T15:55:00+05:30
+**What did we do:**
+- Corrected the `faq-section` heading class from `.title` (which was incorrectly applying the massive `clamp(2.5rem...)` hero display size) to `.section-title` to align with the rest of the page's section hierarchy.
+- Updated `.faq-item h3` to use `var(--font-serif)` (Playfair Display) because these are narrative questions, following the DESIGN.md rule: "serif for philosophy and narrative weight, monospace for data".
+- Updated `.aeo-extraction strong` to also use `var(--font-serif)` and increased the font size to `1.1rem` for better alignment with the FAQ structure.
+- Polished the margins of the AEO block to perfectly integrate into the hero's flexbox gap rhythm, removing the arbitrary top and bottom margins so it flows naturally beneath the subtitle.
+**Why did we choose to do that:**
+The `impeccable polish` command demands strict alignment with the existing design system. The FAQ title was a glaring deviation (hero sizing in a regular section), and the typography lacked semantic separation. By assigning the serif font to the questions (narrative) and relying on the parent flex container's gap for spacing, the sections now adhere to the project's precise typography and tonal rules.

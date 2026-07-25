@@ -1399,6 +1399,62 @@ svg#main-chart rect[tabindex="0"]:focus {
     }
 }
 
+/* FAQ Section */
+.faq-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xl);
+    margin-top: var(--space-xxl);
+}
+
+.faq-section .title {
+    margin-bottom: var(--space-lg);
+}
+
+.faq-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--space-xl) var(--space-xxl);
+}
+
+.faq-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.faq-item h3 {
+    font-family: var(--font-serif);
+    font-size: 1.1rem;
+    font-weight: var(--weight-semibold);
+    color: var(--ice);
+    line-height: 1.3;
+}
+
+.faq-item p {
+    color: var(--mist);
+    margin: 0;
+}
+
+.aeo-extraction {
+    max-width: 65ch;
+    margin: 0;
+    color: var(--mist);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.aeo-extraction strong {
+    font-family: var(--font-serif);
+    font-size: 1.1rem;
+    color: var(--ice);
+    font-weight: var(--weight-semibold);
+}
+
 @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
