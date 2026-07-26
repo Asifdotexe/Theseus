@@ -4,6 +4,17 @@ on:
   schedule:
     - cron: "0 0 1 * *"
   workflow_dispatch:
+    inputs:
+      reprocess:
+        description: 'Reprocess a specific snapshot (e.g. YYYY-MM) or type "all" to wipe and rebuild completely.'
+        required: false
+        type: string
+        default: ''
+      full_fossil_scan:
+        description: 'Run a full deep-scan for fossils (uncheck to only do a fast survivor update)'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: theseus-data-engine
@@ -53,7 +64,18 @@ jobs:
         continue-on-error: true
         env:
           REPO_NAME: ${{ matrix.repo }}
-        run: poetry run python -m scripts.run_pipeline --repo "$REPO_NAME" --update-survivor
+        run: |
+          REPROCESS_FLAG=""
+          if [ "${{ github.event.inputs.reprocess }}" != "" ]; then
+            REPROCESS_FLAG="--reprocess ${{ github.event.inputs.reprocess }}"
+          fi
+          
+          SURVIVOR_FLAG="--update-survivor"
+          if [ "${{ github.event.inputs.full_fossil_scan }}" == "true" ]; then
+            SURVIVOR_FLAG=""
+          fi
+          
+          poetry run python -m scripts.run_pipeline --repo "$REPO_NAME" $REPROCESS_FLAG $SURVIVOR_FLAG
         timeout-minutes: 120
 
       - name: Save status

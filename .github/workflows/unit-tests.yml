@@ -28,9 +28,25 @@ jobs:
       - name: Install dependencies
         run: poetry install --with dev
 
-      - name: Run linter
+      - name: Run Python linter
         run: poetry run pylint scripts/ --output-format=colorized
         continue-on-error: true
 
-      - name: Run tests
+      - name: Run Python tests
         run: poetry run pytest tests/ -v --tb=short
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "engine -> target"
+
+      - name: Run Rust Lints & Formatting
+        working-directory: engine
+        run: |
+          cargo fmt --check
+          cargo clippy -- -D warnings
+        continue-on-error: true
+
+      - name: Run Rust tests
+        working-directory: engine
+        run: cargo test
