@@ -281,7 +281,8 @@ def _find_baseline(
 
     commit, comp = load_latest_state(state_json_path)
     if commit and comp:
-        return (commit, comp)
+        if commit == last_historical_snapshot.get("commit_hash"):
+            return (commit, comp)
     return None
 
 

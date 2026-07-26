@@ -35,53 +35,6 @@ def _atomic_replace(tmp_path: Path, target_path: Path) -> None:
     tmp_path.replace(target_path)
 
 
-def get_last_history_snapshot(file_path: str | Path) -> dict | None:
-    """
-    Read the last snapshot from a JSON Lines history file.
-
-    We use this function to quickly peek at the most recent snapshot without having to 
-    load the entire repository history into memory. This is especially helpful for large 
-    codebases where the history file can grow to hundreds of megabytes. By just reading 
-    the last line of the JSONL file, we can figure out our current baseline and seamlessly 
-    resume incremental blame analysis.
-
-    :param file_path: Path to the JSON Lines history file.
-    :return: The last snapshot dictionary, or None if the file is empty or does not exist.
-    """
-    path = Path(file_path)
-    if not path.exists():
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            last_line = None
-            for line in f:
-                if line.strip():
-                    last_line = line
-            if last_line:
-                return json.loads(last_line)
-    except (json.JSONDecodeError, OSError) as e:
-        logger.warning("Could not parse the last line of %s: %s", file_path, e)
-    return None
-
-
-def append_history_snapshot(file_path: str | Path, snapshot: dict) -> None:
-    """
-    Append a snapshot to a JSON Lines history file.
-
-    :param file_path: Path to the JSON Lines history file.
-    :param snapshot: The snapshot dictionary to append.
-    """
-    path = Path(file_path)
-    # Make sure the target directory exists before trying to create a file within it,
-    # otherwise open() will raise a FileNotFoundError.
-    _ensure_parent_dir(path)
-    
-    with open(path, "a", encoding="utf-8") as f:
-        # We serialize the dictionary into a compact, single-line JSON string without spaces,
-        # followed by a newline. This strictly adheres to the JSON Lines (JSONL) format requirement
-        # where each line must be a valid independent JSON object.
-        f.write(json.dumps(snapshot, separators=(",", ":")) + "\n")
-
 
 def load_history(file_path: str | Path) -> list[dict]:
     """
@@ -163,9 +116,12 @@ def load_latest_state(file_path: str | Path) -> tuple[str | None, dict | None]:
         return None, None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            logger.warning("%s does not contain a JSON object, ignoring state.", file_path)
+            return None, None
         return data.get("commit_hash"), data.get("file_compositions")
-    except (json.JSONDecodeError, OSError):
-        logger.warning("%s is corrupted, ignoring state.", file_path)
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        logger.warning("%s is corrupted or unreadable, ignoring state.", file_path)
         return None, None
 
 

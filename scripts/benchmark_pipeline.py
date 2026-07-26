@@ -1,10 +1,11 @@
 import time
 import os
 import json
-from pathlib import Path
-from scripts.analyse_repository import analyze_single_snapshot, ensure_repo_ready, get_snapshot_periods
 import sys
+from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
+
+from scripts.analyse_repository import analyze_single_snapshot, ensure_repo_ready, get_snapshot_periods
 
 # Helper utility to convert raw byte counts into human-readable formats.
 # This is needed to clearly visualize the data storage bloat caused by 
@@ -35,7 +36,7 @@ def run_benchmark():
     """
     repo_slug = "anthropics/claude-code"
     repo_name = "claude-code"
-    temp_repo_path = f"../temp_workdir_benchmark"
+    temp_repo_path = "../temp_workdir_benchmark"
     
     print(f"--- Benchmarking pipeline on {repo_name} ---")
     ensure_repo_ready(repo_slug, repo_name, temp_repo_path)
