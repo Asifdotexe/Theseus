@@ -15,11 +15,11 @@
 
 ## The philosophy
 
-The Ship of Theseus is a thought experiment: if you replace every wooden plank on a ship, is it still the same ship? 
+The Ship of Theseus is a thought experiment: if you replace every wooden plank on a ship, is it still the same ship?
 
 Software projects do this constantly. A repository can live for decades. The original developers leave, architectures shift, and eventually, the last line of the original commit is deleted. But the repo keeps its name and URL.
 
-This project visualizes that process. It measures codebase churn by tracking when lines of code were written and how long they survive. 
+This project visualizes that process. It measures codebase churn by tracking when lines of code were written and how long they survive.
 
 People use this to:
 - See how quickly a codebase is turning over. A stable architecture holds onto old code, while a frantic rewrite shows a sudden drop.
@@ -58,7 +58,7 @@ poetry run python -m scripts.add_fossils --update-survivor
 
 ### Viewing the chart
 
-Open `index.html` in a browser. 
+Open `index.html` in a browser.
 
 ```bash
 # macOS

@@ -26,14 +26,14 @@ journey
 The workflow orchestrates analysis across all configured repositories in a matrix job by calling `run_pipeline.py --update-survivor`. This script manages the three pipeline stages: incremental snapshot analysis, survivor fossil extraction, and payload cleanup.
 
 ### 2. Updating Survivor Fossils
-Genesis fossils rarely change because they point to the very first commit. The UI primarily tracks the "Living Fossil," which moves when old code is deleted. 
+Genesis fossils rarely change because they point to the very first commit. The UI primarily tracks the "Living Fossil," which moves when old code is deleted.
 
 To save processing time during CI, the Action runs the pipeline with the `--update-survivor` flag, updating the `view_commit` tip to track code changes without re-evaluating the entire history.
 
 ### 3. Committing updates
-After the pipeline runs across all repositories, the `create-pr` job downloads the combined data artifacts and checks if any files have changed. 
+After the pipeline runs across all repositories, the `create-pr` job downloads the combined data artifacts and checks if any files have changed.
 
-If there are modifications, the GitHub Actions bot commits the new JSON payloads to a branch (`chore/monthly-data-update`) and automatically opens or updates a Pull Request to `main`. 
+If there are modifications, the GitHub Actions bot commits the new JSON payloads to a branch (`chore/monthly-data-update`) and automatically opens or updates a Pull Request to `main`.
 
 > [!TIP]
 > Ensure the Action has Write permissions in the repository settings: `Settings -> Actions -> General -> Workflow permissions -> Read and write permissions`. Otherwise, the PR creation attempt will return an `HTTP 403` error and fail silently.

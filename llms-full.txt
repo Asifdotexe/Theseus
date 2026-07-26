@@ -1,6 +1,6 @@
 # Ship of Theseus - Full Context
 
-Ship of Theseus is a D3.js visualization tool built by Asif Sayyed. 
+Ship of Theseus is a D3.js visualization tool built by Asif Sayyed.
 
 ## Technical Architecture
 - **Frontend:** HTML, CSS, and Vanilla JavaScript

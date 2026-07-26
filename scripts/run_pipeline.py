@@ -21,9 +21,9 @@ import os
 import sys
 import time
 
-
 from scripts._utils import load_config
-from scripts.cleanup_data import execute_full_cleanup_and_graph_generation as run_cleanup
+from scripts.cleanup_data import \
+    execute_full_cleanup_and_graph_generation as run_cleanup
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +68,7 @@ def run_pipeline(
 
     # ── Stage 1: Analyse ──────────────────────────────────────────────
     logger.info("═══ STAGE 1: Snapshot analysis ═══")
-    from scripts.analyse_repository import (
-        process_repository,
-    )
+    from scripts.analyse_repository import process_repository
 
     for repo_info in selected:
         repo_slug = repo_info.get("repo", "")

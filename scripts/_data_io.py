@@ -10,7 +10,6 @@ Fossils (the oldest lines of code) are managed in their own separate JSON files.
 
 import json
 import logging
-import os
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 def _ensure_parent_dir(path: Path) -> None:
     """
     Ensure the parent directory of a path exists.
-    
+
     :param path: The file path whose parent directory should exist.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -28,12 +27,11 @@ def _ensure_parent_dir(path: Path) -> None:
 def _atomic_replace(tmp_path: Path, target_path: Path) -> None:
     """
     Atomically replace the target file with a temporary file.
-    
+
     :param tmp_path: The temporary file containing the new data.
     :param target_path: The final destination path.
     """
     tmp_path.replace(target_path)
-
 
 
 def load_history(file_path: str | Path) -> list[dict]:
@@ -107,7 +105,7 @@ def save_fossils(file_path: str | Path, fossils: dict) -> None:
 def load_latest_state(file_path: str | Path) -> tuple[str | None, dict | None]:
     """
     Load the latest file_compositions state for incremental blame.
-    
+
     :param file_path: Path to the state JSON file.
     :return: A tuple containing the commit hash and file compositions, or (None, None) if not found.
     """
@@ -117,7 +115,9 @@ def load_latest_state(file_path: str | Path) -> tuple[str | None, dict | None]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
-            logger.warning("%s does not contain a JSON object, ignoring state.", file_path)
+            logger.warning(
+                "%s does not contain a JSON object, ignoring state.", file_path
+            )
             return None, None
         return data.get("commit_hash"), data.get("file_compositions")
     except (json.JSONDecodeError, OSError, UnicodeDecodeError):
@@ -125,10 +125,12 @@ def load_latest_state(file_path: str | Path) -> tuple[str | None, dict | None]:
         return None, None
 
 
-def save_latest_state(file_path: str | Path, commit_hash: str, file_compositions: dict) -> None:
+def save_latest_state(
+    file_path: str | Path, commit_hash: str, file_compositions: dict
+) -> None:
     """
     Save the latest file_compositions state atomically.
-    
+
     :param file_path: Destination path for the state JSON file.
     :param commit_hash: The commit hash of the state.
     :param file_compositions: The file compositions dict.
