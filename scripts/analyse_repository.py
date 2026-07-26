@@ -237,8 +237,8 @@ def _filter_snapshots(
 
     :param all_periods: Full list of (period, commit) tuples.
     :param processed_periods: Set of period strings already on disk.
-    :param reprocess: Optional ``YYYY-MM`` period to force re-processing.
-    :return: List of (period, commit) tuples that need processing.
+    :param reprocess: Optional target ('all', 'last', or 'YYYY-MM') to force re-processing.
+    :return: A list of (YYYY-MM, commit_hash) tuples to process.
     """
     result: list[tuple[str, str]] = []
     for period, commit in all_periods:
@@ -415,7 +415,7 @@ def process_repository(
 
     :param repo_slug: GitHub ``owner/name`` slug.
     :param data_dir: Path to the ``data/`` output directory.
-    :param reprocess: Optional ``YYYY-MM`` period to force re-processing.
+    :param reprocess: Optional target ('all', 'last', or 'YYYY-MM') to force re-processing.
     """
     repo_name = repo_slug.split("/")[-1]
     temp_repo_path = f"./temp_workdir_{repo_slug.replace('/', '__')}"
@@ -467,7 +467,7 @@ def main() -> None:
     CLI flags
     ---------
     --repo NAME         Process only the given repository (by config name).
-    --reprocess YYYY-MM Re-process a specific snapshot period even if it already
+    --reprocess TARGET  Re-process 'all', 'last', or a specific snapshot period even if it already
                         exists on disk.
     """
     parser = argparse.ArgumentParser(
@@ -521,7 +521,7 @@ def main() -> None:
         logger.info("Processing %d repositories", len(selected_targets))
 
     if args.reprocess:
-        logger.info("Re-processing period: %s", args.reprocess)
+        logger.info("Re-processing target: %s", args.reprocess)
 
     max_top_level_workers = min(
         len(selected_targets),

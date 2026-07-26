@@ -3,7 +3,7 @@ Unified orchestration script for the Theseus data pipeline.
 
 Usage::
 
-    python -m scripts.run_pipeline [--repo NAME] [--reprocess YYYY-MM] [--update-survivor]
+    python -m scripts.run_pipeline [--repo NAME] [--reprocess TARGET] [--update-survivor]
 
 Runs all three stages in sequence on one or more repositories:
 
@@ -37,7 +37,7 @@ def run_pipeline(
     Run the full pipeline (analyse → fossils → cleanup) for all repositories.
 
     :param repo: Optional repository name to process (None = all repos).
-    :param reprocess: Optional ``YYYY-MM`` period to force re-process.
+    :param reprocess: Optional target ('all', 'last', or 'YYYY-MM') to force re-process.
     :param update_survivor: If ``True``, skip genesis scan and only refresh the
         survivor (living) fossil. Designed for monthly cron ticks.
     :return: ``True`` if any stage failed, ``False`` otherwise.
@@ -145,8 +145,8 @@ def main() -> None:
 
     CLI flags
     ---------
-    --repo NAME          Process only this repository (by config name).
-    --reprocess YYYY-MM  Re-process a specific snapshot period.
+    --repo NAME          Process only this repository.
+    --reprocess TARGET   Re-process 'all', 'last', or a specific snapshot period.
     --update-survivor    Skip genesis scan; refresh only the survivor fossil
                          (designed for monthly cron ticks).
     """
