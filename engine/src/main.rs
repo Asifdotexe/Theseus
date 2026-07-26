@@ -1,5 +1,5 @@
 use clap::Parser;
-use log::{error, info, warn};
+use log::{error, info};
 use rayon::prelude::*;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -130,7 +130,7 @@ fn process_blame(
 
                 let mut year_counts = HashMap::new();
                 for hunk in blame.iter() {
-                    let time = hunk.final_signature().when();
+                    let time = hunk.final_signature().unwrap().when();
                     let datetime = Utc.timestamp_opt(time.seconds(), 0).unwrap();
                     let year = datetime.format("%Y").to_string();
                     let lines = hunk.lines_in_hunk() as u32;
@@ -168,7 +168,7 @@ fn main() {
 
     info!("Found {} snapshot periods to process.", periods.len());
 
-    let mut prev_tree: Option<Tree> = None;
+    let mut prev_tree_oid: Option<Oid> = None;
     let mut file_compositions: FileCompositions = HashMap::new();
 
     // Make sure output directory exists
@@ -254,14 +254,15 @@ fn main() {
                 periods.len(),
                 period
             );
-            prev_tree = Some(curr_tree);
+            prev_tree_oid = Some(curr_tree.id());
             continue;
         }
 
         let tracked_files = get_tracked_files(&repo, &curr_tree).unwrap();
 
-        let files_to_blame = if let Some(old_tree) = &prev_tree {
-            let changed = get_changed_files(&repo, old_tree, &curr_tree).unwrap();
+        let files_to_blame = if let Some(old_oid) = prev_tree_oid {
+            let old_tree = repo.find_tree(old_oid).unwrap();
+            let changed = get_changed_files(&repo, &old_tree, &curr_tree).unwrap();
             // Retain compositions only for files still tracked and not changed
             file_compositions.retain(|f, _| tracked_files.contains(f) && !changed.contains(f));
 
@@ -319,7 +320,7 @@ fn main() {
             let _ = serde_json::to_writer(state_file, &file_compositions);
         }
 
-        prev_tree = Some(curr_tree);
+        prev_tree_oid = Some(curr_tree.id());
     }
 
     info!("Engine finished in {:.2?}", start_overall.elapsed());
