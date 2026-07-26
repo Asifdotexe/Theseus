@@ -119,27 +119,29 @@ fn process_blame(
 ) -> FileCompositions {
     let results: Vec<(String, HashMap<String, u32>)> = files_to_blame
         .into_par_iter()
-        .filter_map(|path| {
-            // Open a thread-local repository instance
-            let repo = Repository::open(repo_path).ok()?;
+        .map_init(
+            || Repository::open(repo_path).ok(),
+            |repo_opt, path| {
+                let repo = repo_opt.as_ref()?;
+                let mut opts = BlameOptions::new();
+                opts.newest_commit(commit_oid);
 
-            let mut opts = BlameOptions::new();
-            opts.newest_commit(commit_oid);
+                let blame = repo.blame_file(Path::new(&path), Some(&mut opts)).ok()?;
 
-            let blame = repo.blame_file(Path::new(&path), Some(&mut opts)).ok()?;
+                let mut year_counts = HashMap::new();
+                for hunk in blame.iter() {
+                    let time = hunk.final_signature().when();
+                    let datetime = Utc.timestamp_opt(time.seconds(), 0).unwrap();
+                    let year = datetime.format("%Y").to_string();
+                    let lines = hunk.lines_in_hunk() as u32;
 
-            let mut year_counts = HashMap::new();
-            for hunk in blame.iter() {
-                let time = hunk.final_signature().when();
-                let datetime = Utc.timestamp_opt(time.seconds(), 0).unwrap();
-                let year = datetime.format("%Y").to_string();
-                let lines = hunk.lines_in_hunk() as u32;
+                    *year_counts.entry(year).or_insert(0) += lines;
+                }
 
-                *year_counts.entry(year).or_insert(0) += lines;
-            }
-
-            Some((path, year_counts))
-        })
+                Some((path, year_counts))
+            },
+        )
+        .filter_map(|x| x)
         .collect();
 
     results.into_iter().collect()
@@ -195,6 +197,8 @@ fn main() {
         if let Some(max_period) = processed_periods.iter().max().cloned() {
             processed_periods.remove(&max_period);
         }
+    } else if reprocess_val != "all" && !reprocess_val.is_empty() {
+        processed_periods.remove(reprocess_val);
     }
 
     if is_append && args.state.exists() {
@@ -208,6 +212,25 @@ fn main() {
     // Truncate if we are starting fresh (or reprocess=all)
     if !is_append && output_path.exists() {
         let _ = std::fs::remove_file(&output_path);
+    } else if is_append && output_path.exists() {
+        // Rewrite output file to remove lines that we are reprocessing
+        use std::io::{BufRead, BufReader};
+        let mut valid_lines = Vec::new();
+        if let Ok(file) = std::fs::File::open(&output_path) {
+            let reader = BufReader::new(file);
+            for line in reader.lines().flatten() {
+                if let Ok(snap) = serde_json::from_str::<SnapshotData>(&line) {
+                    if processed_periods.contains(&snap.snapshot_date) {
+                        valid_lines.push(line);
+                    }
+                }
+            }
+        }
+        if let Ok(mut temp_out) = std::fs::File::create(&output_path) {
+            for line in valid_lines {
+                let _ = writeln!(temp_out, "{}", line);
+            }
+        }
     }
 
     let mut out_file = OpenOptions::new()
@@ -289,14 +312,14 @@ fn main() {
         let json = serde_json::to_string(&snapshot).unwrap();
         writeln!(out_file, "{}", json).unwrap();
 
-        prev_tree = Some(curr_tree);
-    }
+        if let Some(parent) = args.state.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Ok(state_file) = std::fs::File::create(&args.state) {
+            let _ = serde_json::to_writer(state_file, &file_compositions);
+        }
 
-    if let Some(parent) = args.state.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    if let Ok(state_file) = std::fs::File::create(&args.state) {
-        let _ = serde_json::to_writer(state_file, &file_compositions);
+        prev_tree = Some(curr_tree);
     }
 
     info!("Engine finished in {:.2?}", start_overall.elapsed());

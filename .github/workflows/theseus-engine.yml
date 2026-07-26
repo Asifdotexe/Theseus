@@ -6,10 +6,14 @@ on:
   workflow_dispatch:
     inputs:
       reprocess:
-        description: 'Reprocess a specific snapshot (e.g. YYYY-MM) or type "all" to wipe and rebuild completely.'
+        description: 'Reprocess state. Type "all" to wipe and rebuild completely, or "last" to re-calculate the most recent period.'
         required: false
-        type: string
-        default: ''
+        type: choice
+        options:
+          - ""
+          - "last"
+          - "all"
+        default: ""
       full_fossil_scan:
         description: 'Run a full deep-scan for fossils (uncheck to only do a fast survivor update)'
         required: false
@@ -55,27 +59,29 @@ jobs:
         run: poetry install --no-interaction --no-root
 
       - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
           workspaces: "engine -> target"
+
+      - name: Build engine
+        working-directory: engine
+        run: cargo build --release
 
       - name: Run pipeline for ${{ matrix.repo }}
         id: pipeline
         continue-on-error: true
         env:
           REPO_NAME: ${{ matrix.repo }}
+          REPROCESS_INPUT: ${{ inputs.reprocess }}
         run: |
-          REPROCESS_FLAG=""
-          if [ "${{ github.event.inputs.reprocess }}" != "" ]; then
-            REPROCESS_FLAG="--reprocess ${{ github.event.inputs.reprocess }}"
+          ARGS=()
+          if [ -n "$REPROCESS_INPUT" ]; then
+            ARGS+=(--reprocess "$REPROCESS_INPUT")
           fi
-          
-          SURVIVOR_FLAG="--update-survivor"
-          if [ "${{ github.event.inputs.full_fossil_scan }}" == "true" ]; then
-            SURVIVOR_FLAG=""
+          if [ "${{ inputs.full_fossil_scan }}" != "true" ]; then
+            ARGS+=(--update-survivor)
           fi
-          
-          poetry run python -m scripts.run_pipeline --repo "$REPO_NAME" $REPROCESS_FLAG $SURVIVOR_FLAG
+          poetry run python -m scripts.run_pipeline --repo "$REPO_NAME" "${ARGS[@]}"
         timeout-minutes: 120
 
       - name: Save status

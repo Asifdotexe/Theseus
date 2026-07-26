@@ -5,12 +5,13 @@ if %errorlevel% neq 0 (
     set CARGO_CMD="%USERPROFILE%\.cargo\bin\cargo.exe"
 )
 
-cd engine
 echo Running Theseus Engine...
+pushd "%~dp0engine" || exit /b 1
 %CARGO_CMD% run --release -- %*
-if %errorlevel% neq 0 (
+set "EXIT_CODE=%errorlevel%"
+popd
+if %EXIT_CODE% neq 0 (
     echo Engine execution failed!
     pause
-    exit /b %errorlevel%
+    exit /b %EXIT_CODE%
 )
-cd ..

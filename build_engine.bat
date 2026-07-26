@@ -6,13 +6,14 @@ if %errorlevel% neq 0 (
 )
 
 echo Building Theseus Engine (Release mode)...
-cd engine
+pushd "%~dp0engine" || exit /b 1
 %CARGO_CMD% build --release
-if %errorlevel% neq 0 (
+set "EXIT_CODE=%errorlevel%"
+popd
+if %EXIT_CODE% neq 0 (
     echo Build failed! Make sure Rust is installed and in your PATH.
     pause
-    exit /b %errorlevel%
+    exit /b %EXIT_CODE%
 )
 echo Build successful! The binary is located at engine\target\release\engine.exe
-cd ..
 pause

@@ -425,7 +425,7 @@ def process_repository(
             ]
         else:
             cmd = [
-                "cargo", "run", "--release", "--manifest-path", "engine/Cargo.toml", "--",
+                "./engine/target/release/engine",
                 "--repo-path", temp_repo_path,
                 "--output", output_json_path,
                 "--state", state_json_path,
