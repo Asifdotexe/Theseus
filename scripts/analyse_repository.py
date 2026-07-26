@@ -31,7 +31,7 @@ from collections import defaultdict
 from itertools import groupby
 
 from scripts._blame import BlameRunner
-from scripts._data_io import load_snapshot_data, save_snapshot_data, load_latest_state, save_latest_state
+from scripts._data_io import load_history, save_history, load_latest_state, save_latest_state
 
 from scripts._utils import (
     get_default_branch,
@@ -301,7 +301,6 @@ def _process_snapshots_by_year(
     new_snapshots: list[tuple[str, str]],
     historical_snapshots: list[dict],
     output_json_path: str,
-    existing_fossils: dict,
     state_json_path: str,
 ) -> None:
     """
@@ -368,7 +367,7 @@ def _process_snapshots_by_year(
         final_snapshots = existing_filtered + total_new_data
         final_snapshots.sort(key=lambda x: x["snapshot_date"])
 
-        save_snapshot_data(output_json_path, final_snapshots, existing_fossils)
+        save_history(output_json_path, final_snapshots)
         
         # Save the latest state strictly for the last snapshot we processed
         if prev_file_data:
@@ -420,15 +419,13 @@ def process_repository(
     """
     repo_name = repo_slug.split("/")[-1]
     temp_repo_path = f"./temp_workdir_{repo_slug.replace('/', '__')}"
-    output_json_path = os.path.join(data_dir, "raw", f"{repo_name}_data.json")
+    output_json_path = os.path.join(data_dir, "raw", f"{repo_name}_history.jsonl")
     state_json_path = os.path.join(data_dir, "state", f"{repo_name}_state.json")
 
     try:
         ensure_repo_ready(repo_slug, repo_name, temp_repo_path)
 
-        state = load_snapshot_data(output_json_path)
-        historical_snapshots = state["snapshots"]
-        existing_fossils = state.get("fossils", {})
+        historical_snapshots = load_history(output_json_path)
         processed_periods = set(item["snapshot_date"] for item in historical_snapshots)
 
         all_periods = get_snapshot_periods(temp_repo_path)
@@ -449,7 +446,7 @@ def process_repository(
 
         _process_snapshots_by_year(
             repo_name, temp_repo_path, new_snapshots,
-            historical_snapshots, output_json_path, existing_fossils,
+            historical_snapshots, output_json_path,
             state_json_path,
         )
 

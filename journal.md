@@ -207,3 +207,13 @@ The user wanted to know the "unit speed" of our operations before we optimize up
 - **Pedagogical Documentation**: Added Sphinx-formatted docstrings and inline comments across all python scripts and javascript modules. We strictly maintained a professional tone while emphasizing the architectural "why" (e.g., explaining why incremental blame state is decoupled, why JS logic is modularized).
 **Why did we choose to do that:**
 Executing the planned refactoring resolves the core issues of data bloat and frontend brittleness in adherence to KISS and SOLID principles. The explicit, professional docstrings were requested by the user so that any future contributor (or the user themselves) can quickly understand the architectural rationale and prevent regressions.
+
+## Goal: Refine Data Layer Optimization & Revert Frontend Modularization
+**Timestamp:** 2026-07-26T14:00:00+05:30
+**What did we do:**
+- **Frontend Reversion**: Reverted the frontend back to the monolithic `app.js` and `index.html` structure per explicit user preference, completely removing the experimental `js/` folder.
+- **JSONL Migration**: Refactored the data layer to use append-only JSON Lines (`_history.jsonl`) instead of giant monolithic JSON files, preventing arbitrary JSON load failures.
+- **Fossil Extraction**: Migrated fossil storage into dedicated `{repo}_fossils.json` files, preventing massive history files from being repeatedly read/written.
+- **Data Script Robustness**: Rewrote `_data_io.py`, `analyse_repository.py`, and `add_fossils.py` to support the new JSONL schema, use atomic file replacements, and replaced all bare `except` blocks with specific exceptions.
+**Why did we choose to do that:**
+The user strictly preferred the simpler monolithic frontend architecture (`app.js`), so we reverted the modularization to align with their workflow. The data layer improvements were necessary because storing absolute snapshots of file compositions in a single JSON array was causing massive I/O overhead and pipeline brittleness. Switching to `JSONL` makes incremental appends extremely fast and memory-efficient. Splitting out fossils into their own files prevents unnecessary re-saving of the same historical data. We also addressed opaque error handling by replacing all bare exceptions.

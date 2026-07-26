@@ -9,7 +9,7 @@ Runs all three stages in sequence on one or more repositories:
 
 1. **Analyse** (snapshot generation via ``analyse_repository``)
 2. **Fossils** (genesis + survivor via ``add_fossils``)
-3. **Cleanup** (future-year filtering + minification via ``cleanup_data``)
+3. **Cleanup** (future-year filtering + minification via ``execute_full_cleanup_and_graph_generation``)
 
 Fossil data model
 -----------------
@@ -23,7 +23,7 @@ import time
 
 
 from scripts._utils import load_config
-from scripts.cleanup_data import cleanup_data as run_cleanup
+from scripts.cleanup_data import execute_full_cleanup_and_graph_generation as run_cleanup
 
 logger = logging.getLogger(__name__)
 
