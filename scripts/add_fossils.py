@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from scripts._blame import BlameRunner, _blank_fossil
-from scripts._data_io import load_snapshot_data, save_snapshot_data
+from scripts._data_io import load_fossils, save_fossils
 from scripts._utils import (
     get_default_branch,
     get_tracked_files,
@@ -239,11 +239,8 @@ def _process_each_repo(
     data_path = Path(data_dir) / "raw"
     had_failures = False
 
-    for json_file in sorted(data_path.glob("*.json")):
-        if json_file.name == "manifest.json":
-            continue
-
-        repo_name = json_file.stem.replace("_data", "")
+    for json_file in sorted(data_path.glob("*_history.jsonl")):
+        repo_name = json_file.stem.replace("_history", "")
         repo_url = repo_urls.get(repo_name)
         if not repo_url:
             logger.warning("No URL found for '%s', skipping.", repo_name)
@@ -251,13 +248,8 @@ def _process_each_repo(
 
         logger.info("━━━ %s: %s ━━━", log_prefix, repo_name)
 
-        data = load_snapshot_data(str(json_file))
-        snapshots = data["snapshots"]
-        existing_fossils = data.get("fossils", {})
-
-        if not snapshots:
-            logger.warning("  No snapshots found in %s, skipping.", json_file.name)
-            continue
+        fossil_file = data_path / f"{repo_name}_fossils.json"
+        existing_fossils = load_fossils(fossil_file)
 
         base_temp = Path("./temp_fossil_repos")
         base_temp.mkdir(exist_ok=True)
@@ -274,7 +266,7 @@ def _process_each_repo(
                 logger.warning("  Fetch failed (continuing with local): %s", e)
 
         try:
-            error = process_fn(json_file, snapshots, existing_fossils, local_repo, repo_name)
+            error = process_fn(fossil_file, existing_fossils, local_repo, repo_name)
             if error:
                 logger.error("  ✗ %s", error)
                 had_failures = True
@@ -296,7 +288,7 @@ def _process_each_repo(
 
 
 def _backfill_one(
-    json_file: Path, snapshots: list, _fossils: dict, local_repo: Path, repo_name: str
+    fossil_file: Path, existing_fossils: dict, local_repo: Path, repo_name: str
 ) -> str | None:
     """Compute both fossils for a single repo; return error string or ``None``."""
     genesis = get_genesis_fossil(local_repo)
@@ -323,7 +315,7 @@ def _backfill_one(
         survivor.get("year"), survivor.get("file"), survivor.get("line"), survivor.get("commit"),
     )
 
-    save_snapshot_data(str(json_file), snapshots, new_fossils)
+    save_fossils(str(fossil_file), new_fossils)
 
 
 def backfill_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
@@ -347,8 +339,7 @@ def backfill_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
 
 
 def _update_survivor_one(
-    json_file: Path, snapshots: list, existing_fossils: dict,
-    local_repo: Path, repo_name: str,
+    fossil_file: Path, existing_fossils: dict, local_repo: Path, repo_name: str
 ) -> str | None:
     """Update survivor fossil for a single repo; return error string or ``None``."""
     existing_survivor = existing_fossils.get("survivor", {})
@@ -382,7 +373,7 @@ def _update_survivor_one(
     )
 
     updated_fossils = {**existing_fossils, "survivor": new_survivor}
-    save_snapshot_data(str(json_file), snapshots, updated_fossils)
+    save_fossils(str(fossil_file), updated_fossils)
     return None
 
 
@@ -402,14 +393,14 @@ def update_survivor_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
 
 
 def _check_genesis(data_dir: str, repo_name: str) -> str | None:
-    raw_path = Path(data_dir) / "raw" / f"{repo_name}_data.json"
-    if not raw_path.exists():
+    fossil_path = Path(data_dir) / "raw" / f"{repo_name}_fossils.json"
+    if not fossil_path.exists():
         return None
     try:
-        data = load_snapshot_data(str(raw_path))
+        fossils = load_fossils(fossil_path)
     except (FileNotFoundError, ValueError, KeyError):
         return None
-    return data.get("fossils", {}).get("genesis", {}).get("file", "")
+    return fossils.get("genesis", {}).get("file", "")
 
 
 def auto_update_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:

@@ -11,7 +11,12 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # pylint: disable=wrong-import-position,import-error
 from scripts._blame import parse_blame_year_counts
-from scripts._data_io import load_snapshot_data
+from scripts._data_io import (
+    load_history,
+    save_history,
+    load_latest_state,
+    save_latest_state,
+)
 from scripts.analyse_repository import _filter_snapshots
 
 
@@ -97,51 +102,84 @@ class TestParseBlameYearCounts:
         assert year in result
 
 
-class TestLoadSnapshotData:
-    """Tests for loading snapshot data from JSON files."""
+class TestHistoryAndStateIO:
+    """Tests for saving and loading history and latest state."""
 
-    def test_load_valid_json(self):
-        """Test loading a correctly formatted existing JSON state."""
-        data = [
+    def test_history_io(self):
+        """Test saving and loading history snapshots."""
+        mock_history = [
             {
                 "snapshot_date": "2024-01",
-                "total_lines": 100,
-                "composition": {"2020": 100},
+                "commit_hash": "abc1234",
+                "composition": {"2020": 100, "2021": 50},
             },
             {
                 "snapshot_date": "2024-02",
-                "total_lines": 150,
-                "composition": {"2020": 150},
+                "commit_hash": "def5678",
+                "composition": {"2020": 100, "2021": 50, "2024": 200},
             },
         ]
+        
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            filepath = f.name
+            
+        try:
+            save_history(filepath, mock_history)
+            loaded_history = load_history(filepath)
+            
+            # Assert the output composition exactly matches the input state
+            assert len(loaded_history) == 2
+            assert loaded_history[0]["snapshot_date"] == "2024-01"
+            assert loaded_history[0]["composition"] == {"2020": 100, "2021": 50}
+            assert loaded_history[1]["snapshot_date"] == "2024-02"
+            assert loaded_history[1]["composition"] == {"2020": 100, "2021": 50, "2024": 200}
+            assert loaded_history == mock_history
+        finally:
+            os.unlink(filepath)
+
+    def test_state_io(self):
+        """Test saving and loading the latest file composition state."""
+        mock_commit = "abc1234567890"
+        mock_file_compositions = {
+            "src/main.py": {"2020": 50, "2021": 20},
+            "src/utils.py": {"2019": 10, "2024": 5},
+        }
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump(data, f)
-            f.flush()
-
-            result = load_snapshot_data(f.name)
-            assert "snapshots" in result
-            assert "fossils" in result
-            snapshots = result["snapshots"]
-            assert len(snapshots) == 2
-            assert snapshots[0]["snapshot_date"] == "2024-01"
-
-        os.unlink(f.name)
-
+            filepath = f.name
+            
+        try:
+            save_latest_state(filepath, mock_commit, mock_file_compositions)
+            loaded_commit, loaded_compositions = load_latest_state(filepath)
+            
+            # Assert the output composition exactly matches the input state
+            assert loaded_commit == mock_commit
+            assert loaded_compositions == mock_file_compositions
+            assert loaded_compositions["src/main.py"] == {"2020": 50, "2021": 20}
+        finally:
+            os.unlink(filepath)
+            
     def test_file_not_exists(self):
-        """Test loading state when the requested file does not exist, expecting a blank default structure."""
-        result = load_snapshot_data("/nonexistent/path/data.json")
-        assert result == {"snapshots": [], "fossils": {}}
+        """Test loading when the requested file does not exist, expecting a blank default structure."""
+        history = load_history("/nonexistent/path/history.jsonl")
+        assert history == []
+        
+        commit, comps = load_latest_state("/nonexistent/path/state.json")
+        assert commit is None
+        assert comps is None
 
     def test_corrupted_json_returns_empty(self):
-        """Test loading a corrupted JSON file, which should fallback dynamically to a default parsed object."""
+        """Test loading a corrupted JSON file."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write("not valid json {")
-            f.flush()
-
-            result = load_snapshot_data(f.name)
-            assert result == {"snapshots": [], "fossils": {}}
-
-        os.unlink(f.name)
+            filepath = f.name
+            
+        try:
+            commit, comps = load_latest_state(filepath)
+            assert commit is None
+            assert comps is None
+        finally:
+            os.unlink(filepath)
 
 
 class TestFilterSnapshots:
