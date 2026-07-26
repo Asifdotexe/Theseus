@@ -481,9 +481,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--reprocess",
-        metavar="YYYY-MM",
+        metavar="TARGET",
         default=None,
-        help="Re-process a specific snapshot period (e.g. '2023-06').",
+        help="Re-process a target. Pass 'all' to wipe and rebuild, 'last' for the latest period, or a specific period like '2023-06'.",
     )
     args = parser.parse_args()
 

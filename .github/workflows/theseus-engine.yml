@@ -5,20 +5,20 @@ on:
     - cron: "0 0 1 * *"
   workflow_dispatch:
     inputs:
-      reprocess:
-        description: 'Reprocess state. Type "all" to wipe and rebuild completely, or "last" to re-calculate the most recent period.'
-        required: false
+      run_mode:
+        description: 'Run Mode (Default is Resume Run)'
+        required: true
         type: choice
         options:
-          - ""
-          - "last"
-          - "all"
-        default: ""
+          - "Resume Run (Pick up where left off)"
+          - "Complete Extraction (Wipe and rebuild all)"
+        default: "Resume Run (Pick up where left off)"
       full_fossil_scan:
         description: 'Run a full deep-scan for fossils (uncheck to only do a fast survivor update)'
         required: false
         type: boolean
         default: false
+
 
 concurrency:
   group: theseus-data-engine
@@ -72,11 +72,11 @@ jobs:
         continue-on-error: true
         env:
           REPO_NAME: ${{ matrix.repo }}
-          REPROCESS_INPUT: ${{ inputs.reprocess }}
+          RUN_MODE: ${{ inputs.run_mode }}
         run: |
           ARGS=()
-          if [ -n "$REPROCESS_INPUT" ]; then
-            ARGS+=(--reprocess "$REPROCESS_INPUT")
+          if [[ "$RUN_MODE" == "Complete Extraction (Wipe and rebuild all)" ]]; then
+            ARGS+=(--reprocess "all")
           fi
           if [ "${{ inputs.full_fossil_scan }}" != "true" ]; then
             ARGS+=(--update-survivor)

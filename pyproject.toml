@@ -21,7 +21,7 @@ dev = [
 ]
 
 [tool.pylint]
-init-hook = "import sys; sys.path.insert(0, 'scripts')"
+init-hook = "import sys; sys.path.insert(0, '.')"
 
 [tool.pylint.format]
 max-line-length = 120
