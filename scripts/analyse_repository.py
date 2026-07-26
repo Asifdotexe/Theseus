@@ -415,30 +415,27 @@ def process_repository(
     try:
         ensure_repo_ready(repo_slug, repo_name, temp_repo_path)
 
-        historical_snapshots = load_history(output_json_path)
-        processed_periods = set(item["snapshot_date"] for item in historical_snapshots)
+        import platform
+        if platform.system() == "Windows":
+            cmd = [
+                "cmd.exe", "/c", "run_engine.bat",
+                "--repo-path", temp_repo_path,
+                "--output", output_json_path,
+                "--state", state_json_path,
+            ]
+        else:
+            cmd = [
+                "./engine/target/release/engine",
+                "--repo-path", temp_repo_path,
+                "--output", output_json_path,
+                "--state", state_json_path,
+            ]
+            
+        if reprocess:
+            cmd.extend(["--reprocess", reprocess])
 
-        all_periods = get_snapshot_periods(temp_repo_path)
-        new_snapshots = _filter_snapshots(all_periods, processed_periods, reprocess)
-
-        if not new_snapshots:
-            logger.info(
-                "[%s] No new periods to process. Data is already up to date!",
-                repo_name,
-            )
-            return
-
-        logger.info(
-            "[%s] Processing %d new snapshots (quarterly pre-2025, monthly 2025+)",
-            repo_name,
-            len(new_snapshots),
-        )
-
-        _process_snapshots_by_year(
-            repo_name, temp_repo_path, new_snapshots,
-            historical_snapshots, output_json_path,
-            state_json_path,
-        )
+        logger.info("[%s] Delegating snapshot analysis to Rust engine...", repo_name)
+        run_command(cmd)
 
     finally:
         remove_path(temp_repo_path)

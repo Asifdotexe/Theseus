@@ -4,6 +4,21 @@ on:
   schedule:
     - cron: "0 0 1 * *"
   workflow_dispatch:
+    inputs:
+      reprocess:
+        description: 'Reprocess state. Type "all" to wipe and rebuild completely, or "last" to re-calculate the most recent period.'
+        required: false
+        type: choice
+        options:
+          - ""
+          - "last"
+          - "all"
+        default: ""
+      full_fossil_scan:
+        description: 'Run a full deep-scan for fossils (uncheck to only do a fast survivor update)'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: theseus-data-engine
@@ -43,12 +58,30 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction --no-root
 
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          workspaces: "engine -> target"
+
+      - name: Build engine
+        working-directory: engine
+        run: cargo build --release
+
       - name: Run pipeline for ${{ matrix.repo }}
         id: pipeline
         continue-on-error: true
         env:
           REPO_NAME: ${{ matrix.repo }}
-        run: poetry run python -m scripts.run_pipeline --repo "$REPO_NAME" --update-survivor
+          REPROCESS_INPUT: ${{ inputs.reprocess }}
+        run: |
+          ARGS=()
+          if [ -n "$REPROCESS_INPUT" ]; then
+            ARGS+=(--reprocess "$REPROCESS_INPUT")
+          fi
+          if [ "${{ inputs.full_fossil_scan }}" != "true" ]; then
+            ARGS+=(--update-survivor)
+          fi
+          poetry run python -m scripts.run_pipeline --repo "$REPO_NAME" "${ARGS[@]}"
         timeout-minutes: 120
 
       - name: Save status
@@ -64,7 +97,9 @@ jobs:
         with:
           name: data-${{ matrix.repo }}
           path: |
-            data/raw/${{ matrix.repo }}_data.json
+            data/raw/${{ matrix.repo }}_history.jsonl
+            data/raw/${{ matrix.repo }}_fossils.json
+            data/state/${{ matrix.repo }}_state.json
             data/processed/${{ matrix.repo }}_graph.json
             data/.status/${{ matrix.repo }}.json
           retention-days: 1

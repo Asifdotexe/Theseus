@@ -218,6 +218,32 @@ Executing the planned refactoring resolves the core issues of data bloat and fro
 **Why did we choose to do that:**
 The user strictly preferred the simpler monolithic frontend architecture (`app.js`), so we reverted the modularization to align with their workflow. The data layer improvements were necessary because storing absolute snapshots of file compositions in a single JSON array was causing massive I/O overhead and pipeline brittleness. Switching to `JSONL` makes incremental appends extremely fast and memory-efficient. Splitting out fossils into their own files prevents unnecessary re-saving of the same historical data. We also addressed opaque error handling by replacing all bare exceptions.
 
+## Goal: High-Performance Rust Rewrite (Data Pipeline)
+**Timestamp:** 2026-07-26T15:25:00+05:30
+**What did we do:**
+- **Halted Python Pipeline:** Killed the Python background pipeline because even with the `JSONL` I/O optimizations, traversing and parsing massive repositories (like `langchain` or `react`) using a `subprocess.run(["git", "blame"])` loop takes 20+ hours. The Python implementation hit a fundamental execution bottleneck.
+- **Architectural Shift:** Formulated a plan to rewrite the CPU-bound data pipeline as a standalone Rust CLI tool (`theseus_engine`), following the core advice from `python-to-rust.md`.
+- **Ecosystem Swap Strategy:**
+  - `argparse` -> `clap` (Command-line arguments).
+  - `json` -> `serde` / `serde_json` (Blazing fast, statically-typed JSON serialization).
+  - `subprocess.run(["git", "blame"])` -> `git2` (Running git traverse and blame in-memory using C-bindings for libgit2).
+  - Single-threaded Python -> `rayon` (Trivially parallelize file-level blames across all CPU cores).
+- **Migration Plan:** We will build this in a new `engine/` directory, focusing exclusively on the heavy snapshot analysis first (the most expensive operation).
+**Why did we choose to do that:**
+Following the `python-to-rust.md` guide, we identified this as the perfect candidate for a Rust migration: it is a pure CPU-bound task, it can be entirely self-contained as a CLI tool (avoiding complex PyO3 interop), and the performance gains from switching from subprocess execution to in-memory native bindings will be astronomical (minutes instead of days). Documenting this here ensures we have a clear, traceable transition path from Python prototyping to Rust production scale.
+
+## Goal: Rust Engine Scaffolding & Developer Experience (DX)
+**Timestamp:** 2026-07-26T15:32:00+05:30
+**What did we do:**
+- **Installed Rust:** Executed `rustup-init` locally to get the `cargo` and `rustc` toolchain online.
+- **Engine Scaffolding:** Created a new `engine/` Cargo project and added dependencies for `serde`, `serde_json`, `clap`, `rayon`, `git2`, `log`, and `env_logger`. 
+- **Main Skeleton:** Set up the basic `src/main.rs` to use `clap` for parsing the identical CLI arguments expected by `analyse_repository.py` (`--repo-path`, `--output`, `--reprocess`).
+- **Bat Scripts for DX:** Since the user isn't deeply familiar with Rust toolchains, we created two helper batch scripts in the project root:
+  - `build_engine.bat`: Automates building the Rust binary in `--release` mode.
+  - `run_engine.bat`: A wrapper script that lets the user execute the compiled engine exactly as they would a Python script, entirely hiding the underlying `cargo` complexities.
+**Why did we choose to do that:**
+While we are making a heavy architectural shift to Rust for raw performance, we cannot alienate the end-user or make the project harder to run. By creating simple, double-clickable or easy-to-invoke `.bat` wrappers (`build_engine.bat` / `run_engine.bat`), the user maintains the same ergonomic workflow they had with Python while transparently reaping the massive speed benefits of compiled Rust.
+
 ## Goal: Data Pipeline Robustness and Over-engineering Cleanup
 **Timestamp:** 2026-07-26T15:10:00+05:30
 **What did we do:**
@@ -227,3 +253,65 @@ The user strictly preferred the simpler monolithic frontend architecture (`app.j
 - **Unit Testing**: Replaced the outdated tests in `test_analyse_repository.py` with comprehensive unit tests for `_data_io.py` that create mock file state data structures and strictly assert the output composition exactly matches the input state.
 **Why did we choose to do that:**
 The user requested a fix for a discrepancy in the `wc -l` guard caused by `git blame` skipping non-text or empty files, which lead to cache invalidation errors. By switching to an exact file-count comparison based on precisely filtered traceable files, we dramatically increase pipeline reliability. Additionally, over-engineered code and verbose docstrings were cleaned up to keep the codebase lean and readable, while unit tests ensure we don't regress the newly decoupled JSON storage mechanics.
+
+## Comprehensive Python to Rust Architecture Mapping
+
+To facilitate learning and guarantee that the reasoning behind the transition to Rust is clear, here is a verbose, 1-to-1 breakdown mapping the old Python data pipeline (`analyse_repository.py`) to the new Rust engine (`engine/src/main.rs`). We outline what Rust offers that Python lacks, and why these features yield a significantly better and faster architecture.
+
+### 1. `get_snapshot_periods(repo_path)`
+**Python approach:** 
+We previously spawned a subshell using `subprocess.run(["git", "log", "--pretty=format:%H|%cI"])`. Python would capture the massive string output, split it line by line, parse the dates into year-month buckets, and store the final commit hash.
+**Rust approach (`get_snapshot_periods`):** 
+We use `git2::Repository::open()` and the `revwalk` iterator to walk the commit tree natively in memory. We sort it chronologically and group it by month right on the commit objects using the `chrono` crate.
+**New Rust Concepts Introduced:**
+- **In-Memory C Bindings (`git2`)**: Instead of shelling out to `git.exe` and incurring OS overhead for every command, `libgit2` links directly to our binary. We read the git internal data structures instantly from memory.
+- **`Result<T, E>` & the `?` Operator**: In Python, functions implicitly raise arbitrary exceptions or return None. In Rust, any function that can fail returns a `Result`. The `?` syntax (`let oid = oid_res?;`) safely propagates errors up the chain without needing messy `try/except` blocks.
+- **Strongly Typed Iterators**: `revwalk` is a lazy iterator. We don't load the entire git log into RAM; we yield one commit at a time, making it incredibly memory efficient.
+
+### 2. `get_tracked_files(repo_path)`
+**Python approach:** 
+We ran `subprocess.run(["git", "ls-files"])`, looped through them, and then used `git check-attr -a` or parsed extensions to figure out if files were binary or empty.
+**Rust approach (`get_tracked_files`):** 
+We grab the snapshot's `Tree` object and call `tree.walk(git2::TreeWalkMode::PreOrder)`. For each file, we check `blob.is_binary()` and `blob.size() > 0`.
+**New Rust Concepts Introduced:**
+- **Pattern Matching (`if let`)**: Rust forces you to handle states correctly. `if let Ok(blob) = repo.find_blob(...)` cleanly extracts the blob from the Result *only* if it succeeded, elegantly skipping missing files without throwing exceptions.
+- **Enums & Sum Types**: The `entry.kind() == Some(ObjectType::Blob)` checks against a strict Enum. You literally cannot compare a Tree to a Blob by accident; the compiler prevents logic bugs.
+
+### 3. `get_changed_files(repo_path, prev_commit, commit)`
+**Python approach:** 
+We used `subprocess.run(["git", "diff-tree", ...])` and parsed the file paths out of the terminal output to implement incremental cache diffing.
+**Rust approach (`get_changed_files`):** 
+We use `repo.diff_tree_to_tree()` and iterate over the generated deltas. 
+**New Rust Concepts Introduced:**
+- **Borrowing and References (`&Tree`, `&mut DiffOptions`)**: Python passes everything by reference natively but relies on the Garbage Collector to clean it up. Rust uses "Lifetimes". `diff_tree_to_tree` borrows the old and new trees via `&Tree`. The memory is strictly managed by the compiler at compile-time, completely eliminating the need for a Garbage Collector, resulting in flat and tiny memory usage charts.
+
+### 4. `_blame_full_snapshot` vs `process_blame`
+**Python approach:** 
+We used `concurrent.futures.ThreadPoolExecutor` to run `git blame --line-porcelain` in multiple sub-processes. This was our biggest bottleneck. Spawning thousands of `git blame` processes took upwards of 20+ hours for large repositories because of Python's Global Interpreter Lock (GIL) and process spawning overhead.
+**Rust approach (`process_blame`):** 
+We use the `rayon` crate. We take a vector of file paths, call `files_to_blame.into_par_iter()`, and suddenly the workload is perfectly distributed across every core on your CPU. We open a `Repository` per thread and use `repo.blame_file()`.
+**New Rust Concepts Introduced:**
+- **Data Parallelism & Zero-Cost Abstractions (`rayon`)**: In Rust, turning a single-threaded loop into a multi-threaded parallel execution is literally as simple as changing `.iter()` to `.par_iter()`.
+- **Fearless Concurrency (`Send` and `Sync`)**: Python’s GIL exists because threading is hard to do safely. In Rust, the compiler checks if objects are thread-safe (`Sync` trait). `git2::Repository` is *not* entirely thread-safe, so if we tried to share one instance across all threads, the code *literally would not compile*. Rust forces us to open a `Repository` handle *inside* the thread closure, preventing race conditions entirely.
+- **Hunk Walking vs String Parsing**: Instead of parsing massive blocks of text from standard out, `repo.blame_file()` returns memory structures called "Hunks". We simply read `hunk.final_signature().when()` to get the timestamp, instantly bypassing all text parsing overhead.
+
+### 5. Data Structuring and Output
+**Python approach:** 
+We constructed Python dictionaries (e.g., `defaultdict(int)`) on the fly, relying on duck typing.
+**Rust approach:** 
+We define a concrete `struct SnapshotData` and use the `serde` crate with `#[derive(Serialize)]`.
+**New Rust Concepts Introduced:**
+- **Macros (`#[derive(Serialize)]`)**: This attribute tells the Rust compiler to automatically generate lightning-fast JSON serialization code for our struct at compile-time. 
+- **Type Guarantee**: `HashMap<String, u32>` strictly enforces that years are strings and line counts are 32-bit unsigned integers (cannot be negative!). If we attempt to insert a float or None, it won't compile. Python would just let it happen and crash at runtime during the JSON dump.
+
+## Goal: Rust Engine Refinement & Pipeline Stabilization
+**Timestamp:** 2026-07-26T16:32:47+05:30
+**What did we do:**
+- **Engine Concurrency Fix:** Refactored the Rayon parallel iterator in `engine/src/main.rs` to use `map_init`, initializing the `git2::Repository` handle once per thread.
+- **Incremental State Safety:** Moved the `file_compositions` JSON state persistence inside the main processing loop to save progress after every snapshot period.
+- **JSONL Deduplication:** Added logic to rewrite the output JSONL file before appending when `--reprocess` is used, explicitly stripping out old lines for the reprocessed periods to prevent duplicated snapshot rows.
+- **Workflow Security & Caching:** Hard-pinned the `Swatinem/rust-cache` action to a specific commit SHA (`e18b497796c12c097a38f9edb9d0641fb99eee32`) in both `theseus-engine.yml` and `unit-tests.yml`. Refactored the pipeline arguments using secure bash arrays (`ARGS=()`) and environment variables instead of string interpolation.
+- **Binary Pre-building:** Added a `cargo build --release` step to the CI workflow and updated `analyse_repository.py` to invoke the pre-built `./engine/target/release/engine` binary directly on Linux, mirroring the batch script behavior on Windows.
+- **Batch Script Resilience:** Updated `build_engine.bat` and `run_engine.bat` to use checked directory traversal (`pushd "%~dp0engine" || exit /b 1`) and preserve the exact exit codes from Cargo.
+**Why did we choose to do that:**
+We identified thread-safety constraints with `libgit2` (specifically, sharing a `git2::Repository` across threads safely), which `map_init` gracefully resolves without performance penalties. Pushing state saves into the loop ensures we don't lose hours of computation if a massive repository crashes mid-way. Deduplicating the JSONL on reprocess maintains data integrity for the downstream React frontend. Pinning GitHub Actions and sanitizing bash inputs follows strict CI security best practices. Using `pushd`/`popd` in the batch scripts prevents unpredictable path resolution bugs when scripts are invoked from arbitrary working directories.
