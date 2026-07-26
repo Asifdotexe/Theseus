@@ -112,17 +112,28 @@ def get_default_branch(repo_path: str | None = None) -> str:
 def get_tracked_files(repo_path: str | None = None) -> list[str]:
     """
     Return a list of files that are tracked by git and exist on disk.
+    Filters out empty files, symlinks, and binaries.
 
     :param repo_path: Path to the git repository (or ``None`` for CWD).
     :return: List of relative file paths.
     """
     files_output = run_command(["git", "ls-files"], cwd=repo_path)
     resolved = str(repo_path) if repo_path else os.getcwd()
-    return [
-        f
-        for f in files_output.splitlines()
-        if os.path.isfile(os.path.join(resolved, f))
-    ]
+    valid_files = []
+    for f in files_output.splitlines():
+        fpath = os.path.join(resolved, f)
+        if not os.path.isfile(fpath) or os.path.islink(fpath):
+            continue
+        if os.path.getsize(fpath) == 0:
+            continue
+        try:
+            with open(fpath, "rb") as fh:
+                if b"\x00" in fh.read(1024):
+                    continue
+        except OSError:
+            continue
+        valid_files.append(f)
+    return valid_files
 
 
 def get_changed_files(

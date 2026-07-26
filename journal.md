@@ -217,3 +217,13 @@ Executing the planned refactoring resolves the core issues of data bloat and fro
 - **Data Script Robustness**: Rewrote `_data_io.py`, `analyse_repository.py`, and `add_fossils.py` to support the new JSONL schema, use atomic file replacements, and replaced all bare `except` blocks with specific exceptions.
 **Why did we choose to do that:**
 The user strictly preferred the simpler monolithic frontend architecture (`app.js`), so we reverted the modularization to align with their workflow. The data layer improvements were necessary because storing absolute snapshots of file compositions in a single JSON array was causing massive I/O overhead and pipeline brittleness. Switching to `JSONL` makes incremental appends extremely fast and memory-efficient. Splitting out fossils into their own files prevents unnecessary re-saving of the same historical data. We also addressed opaque error handling by replacing all bare exceptions.
+
+## Goal: Data Pipeline Robustness and Over-engineering Cleanup
+**Timestamp:** 2026-07-26T15:10:00+05:30
+**What did we do:**
+- **Code Review & Cleanup**: Applied a ponytail review to `scripts/cleanup_data.py`, stripping out verbose docstrings, standard library explanations, and shrinking error aggregation logic to minimize the code footprint.
+- **Accuracy Improvements**: Updated `get_tracked_files` in `scripts/_utils.py` to accurately filter out empty files, symlinks, and binaries instead of relying solely on `git ls-files`. 
+- **Validation Refinements**: Modified `_verify_line_count_guard` in `scripts/analyse_repository.py` to assert exact file counts rather than line counts, completely dropping the arbitrary 1-5% tolerance threshold.
+- **Unit Testing**: Replaced the outdated tests in `test_analyse_repository.py` with comprehensive unit tests for `_data_io.py` that create mock file state data structures and strictly assert the output composition exactly matches the input state.
+**Why did we choose to do that:**
+The user requested a fix for a discrepancy in the `wc -l` guard caused by `git blame` skipping non-text or empty files, which lead to cache invalidation errors. By switching to an exact file-count comparison based on precisely filtered traceable files, we dramatically increase pipeline reliability. Additionally, over-engineered code and verbose docstrings were cleaned up to keep the codebase lean and readable, while unit tests ensure we don't regress the newly decoupled JSON storage mechanics.

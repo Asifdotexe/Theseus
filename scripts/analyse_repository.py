@@ -159,19 +159,13 @@ def _verify_line_count_guard(
     max_workers: int | None,
 ) -> tuple[dict[str, int], dict[str, dict[str, int]]]:
     """
-    Verify blame total against ``wc -l``; fall back to full blame on mismatch.
+    Verify the number of files blamed against the number of valid traceable files;
+    fall back to full blame on mismatch.
 
     Why this safeguard is here:
     Incremental blame is used to optimize performance, but cache drift can occur due to 
-    file renames, deletions, or dynamically generated files. If the total number of lines 
-    blamed diverges significantly from the physical lines on disk, the cache is no longer 
-    reliable. When this drift is detected, the script invalidates the cache and forces a 
-    full blame for the current snapshot to restore accuracy.
-
-    Tolerance is 1 % for repos under 50k lines and 5 % for larger repos.
-    Empirical data shows that larger repos (react, zed) regularly see 3-5 %
-    mismatch from binary/generated files that blame skips, so the relaxed
-    threshold avoids unnecessary full re-blames.
+    file renames, deletions, or dynamically generated files. When drift is detected, 
+    the script invalidates the cache and forces a full blame for the current snapshot.
 
     :param repo_path: Path to the git repository.
     :type repo_path: str
@@ -184,22 +178,18 @@ def _verify_line_count_guard(
     :return: ``(age_distribution, file_compositions)``, possibly from a full
              re-blame if the check failed.
     """
-    blame_total = sum(age_distribution.values())
-    disk_total = count_repo_lines(repo_path)
-    if disk_total <= 0:
-        return age_distribution, file_compositions
+    blamed_files_count = len(file_compositions)
+    traceable_files = get_tracked_files(repo_path)
+    traceable_files_count = len(traceable_files)
 
-    threshold = 1.0 if disk_total < 50000 else 5.0
-    diff_pct = abs(blame_total - disk_total) / disk_total * 100
-    if diff_pct <= threshold:
+    if blamed_files_count == traceable_files_count:
         return age_distribution, file_compositions
 
     logger.warning(
-        "Line count mismatch: blame=%d vs disk=%d (%.1f%%). "
+        "File count mismatch: blamed=%d vs traceable=%d. "
         "Falling back to full blame.",
-        blame_total,
-        disk_total,
-        diff_pct,
+        blamed_files_count,
+        traceable_files_count,
     )
     file_compositions = _blame_full_snapshot(repo_path, max_workers)
     return _aggregate_file_compositions(file_compositions), file_compositions
