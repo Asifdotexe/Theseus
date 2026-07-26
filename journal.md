@@ -303,3 +303,15 @@ We define a concrete `struct SnapshotData` and use the `serde` crate with `#[der
 **New Rust Concepts Introduced:**
 - **Macros (`#[derive(Serialize)]`)**: This attribute tells the Rust compiler to automatically generate lightning-fast JSON serialization code for our struct at compile-time. 
 - **Type Guarantee**: `HashMap<String, u32>` strictly enforces that years are strings and line counts are 32-bit unsigned integers (cannot be negative!). If we attempt to insert a float or None, it won't compile. Python would just let it happen and crash at runtime during the JSON dump.
+
+## Goal: Rust Engine Refinement & Pipeline Stabilization
+**Timestamp:** 2026-07-26T16:32:47+05:30
+**What did we do:**
+- **Engine Concurrency Fix:** Refactored the Rayon parallel iterator in `engine/src/main.rs` to use `map_init`, initializing the `git2::Repository` handle once per thread.
+- **Incremental State Safety:** Moved the `file_compositions` JSON state persistence inside the main processing loop to save progress after every snapshot period.
+- **JSONL Deduplication:** Added logic to rewrite the output JSONL file before appending when `--reprocess` is used, explicitly stripping out old lines for the reprocessed periods to prevent duplicated snapshot rows.
+- **Workflow Security & Caching:** Hard-pinned the `Swatinem/rust-cache` action to a specific commit SHA (`e18b497796c12c097a38f9edb9d0641fb99eee32`) in both `theseus-engine.yml` and `unit-tests.yml`. Refactored the pipeline arguments using secure bash arrays (`ARGS=()`) and environment variables instead of string interpolation.
+- **Binary Pre-building:** Added a `cargo build --release` step to the CI workflow and updated `analyse_repository.py` to invoke the pre-built `./engine/target/release/engine` binary directly on Linux, mirroring the batch script behavior on Windows.
+- **Batch Script Resilience:** Updated `build_engine.bat` and `run_engine.bat` to use checked directory traversal (`pushd "%~dp0engine" || exit /b 1`) and preserve the exact exit codes from Cargo.
+**Why did we choose to do that:**
+We identified thread-safety constraints with `libgit2` (specifically, sharing a `git2::Repository` across threads safely), which `map_init` gracefully resolves without performance penalties. Pushing state saves into the loop ensures we don't lose hours of computation if a massive repository crashes mid-way. Deduplicating the JSONL on reprocess maintains data integrity for the downstream React frontend. Pinning GitHub Actions and sanitizing bash inputs follows strict CI security best practices. Using `pushd`/`popd` in the batch scripts prevents unpredictable path resolution bugs when scripts are invoked from arbitrary working directories.
