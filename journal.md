@@ -218,6 +218,32 @@ Executing the planned refactoring resolves the core issues of data bloat and fro
 **Why did we choose to do that:**
 The user strictly preferred the simpler monolithic frontend architecture (`app.js`), so we reverted the modularization to align with their workflow. The data layer improvements were necessary because storing absolute snapshots of file compositions in a single JSON array was causing massive I/O overhead and pipeline brittleness. Switching to `JSONL` makes incremental appends extremely fast and memory-efficient. Splitting out fossils into their own files prevents unnecessary re-saving of the same historical data. We also addressed opaque error handling by replacing all bare exceptions.
 
+## Goal: High-Performance Rust Rewrite (Data Pipeline)
+**Timestamp:** 2026-07-26T15:25:00+05:30
+**What did we do:**
+- **Halted Python Pipeline:** Killed the Python background pipeline because even with the `JSONL` I/O optimizations, traversing and parsing massive repositories (like `langchain` or `react`) using a `subprocess.run(["git", "blame"])` loop takes 20+ hours. The Python implementation hit a fundamental execution bottleneck.
+- **Architectural Shift:** Formulated a plan to rewrite the CPU-bound data pipeline as a standalone Rust CLI tool (`theseus_engine`), following the core advice from `python-to-rust.md`.
+- **Ecosystem Swap Strategy:**
+  - `argparse` -> `clap` (Command-line arguments).
+  - `json` -> `serde` / `serde_json` (Blazing fast, statically-typed JSON serialization).
+  - `subprocess.run(["git", "blame"])` -> `git2` (Running git traverse and blame in-memory using C-bindings for libgit2).
+  - Single-threaded Python -> `rayon` (Trivially parallelize file-level blames across all CPU cores).
+- **Migration Plan:** We will build this in a new `engine/` directory, focusing exclusively on the heavy snapshot analysis first (the most expensive operation).
+**Why did we choose to do that:**
+Following the `python-to-rust.md` guide, we identified this as the perfect candidate for a Rust migration: it is a pure CPU-bound task, it can be entirely self-contained as a CLI tool (avoiding complex PyO3 interop), and the performance gains from switching from subprocess execution to in-memory native bindings will be astronomical (minutes instead of days). Documenting this here ensures we have a clear, traceable transition path from Python prototyping to Rust production scale.
+
+## Goal: Rust Engine Scaffolding & Developer Experience (DX)
+**Timestamp:** 2026-07-26T15:32:00+05:30
+**What did we do:**
+- **Installed Rust:** Executed `rustup-init` locally to get the `cargo` and `rustc` toolchain online.
+- **Engine Scaffolding:** Created a new `engine/` Cargo project and added dependencies for `serde`, `serde_json`, `clap`, `rayon`, `git2`, `log`, and `env_logger`. 
+- **Main Skeleton:** Set up the basic `src/main.rs` to use `clap` for parsing the identical CLI arguments expected by `analyse_repository.py` (`--repo-path`, `--output`, `--reprocess`).
+- **Bat Scripts for DX:** Since the user isn't deeply familiar with Rust toolchains, we created two helper batch scripts in the project root:
+  - `build_engine.bat`: Automates building the Rust binary in `--release` mode.
+  - `run_engine.bat`: A wrapper script that lets the user execute the compiled engine exactly as they would a Python script, entirely hiding the underlying `cargo` complexities.
+**Why did we choose to do that:**
+While we are making a heavy architectural shift to Rust for raw performance, we cannot alienate the end-user or make the project harder to run. By creating simple, double-clickable or easy-to-invoke `.bat` wrappers (`build_engine.bat` / `run_engine.bat`), the user maintains the same ergonomic workflow they had with Python while transparently reaping the massive speed benefits of compiled Rust.
+
 ## Goal: Data Pipeline Robustness and Over-engineering Cleanup
 **Timestamp:** 2026-07-26T15:10:00+05:30
 **What did we do:**

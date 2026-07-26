@@ -1,0 +1,12 @@
+@echo off
+echo Building Theseus Engine (Release mode)...
+cd engine
+cargo build --release
+if %errorlevel% neq 0 (
+    echo Build failed! Make sure Rust is installed and in your PATH.
+    pause
+    exit /b %errorlevel%
+)
+echo Build successful! The binary is located at engine\target\release\engine.exe
+cd ..
+pause
