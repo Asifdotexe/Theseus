@@ -1,7 +1,13 @@
 @echo off
+set CARGO_CMD=cargo
+where cargo >nul 2>nul
+if %errorlevel% neq 0 (
+    set CARGO_CMD="%USERPROFILE%\.cargo\bin\cargo.exe"
+)
+
 echo Building Theseus Engine (Release mode)...
 cd engine
-cargo build --release
+%CARGO_CMD% build --release
 if %errorlevel% neq 0 (
     echo Build failed! Make sure Rust is installed and in your PATH.
     pause
