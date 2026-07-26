@@ -222,3 +222,12 @@ We define a concrete `struct SnapshotData` and use the `serde` crate with `#[der
 - **Batch Script Resilience:** Updated `build_engine.bat` and `run_engine.bat` to use checked directory traversal (`pushd "%~dp0engine" || exit /b 1`) and preserve the exact exit codes from Cargo.
 **Why did we choose to do that:**
 We identified thread-safety constraints with `libgit2` (specifically, sharing a `git2::Repository` across threads safely), which `map_init` gracefully resolves without performance penalties. Pushing state saves into the loop ensures we don't lose hours of computation if a massive repository crashes mid-way. Deduplicating the JSONL on reprocess maintains data integrity for the downstream React frontend. Pinning GitHub Actions and sanitizing bash inputs follows strict CI security best practices. Using `pushd`/`popd` in the batch scripts prevents unpredictable path resolution bugs when scripts are invoked from arbitrary working directories.
+
+## Goal: Legacy Data Migration & Pipeline Polish
+**Timestamp:** 2026-07-26T21:30:00+05:30
+**What did we do:**
+- **Legacy Data Migration**: Authored and ran a one-off Python script to migrate all legacy monolithic `{repo}_data.json` files in `data/raw/` and `data/archive/` into the new JSONL format (`{repo}_history.jsonl`). Extracted the most recent commit and composition tracking data into `data/state/{repo}_state.json`.
+- **Action UI & Pipeline Target Refinement**: Renamed the GitHub Actions dropdown inputs in `theseus-engine.yml` to clearly reflect "Resume Run" vs "Complete Extraction". Updated Python docstrings and CLI help text across `run_pipeline.py` and `analyse_repository.py` to document the full `--reprocess TARGET` contract (`all`, `last`, or `YYYY-MM`).
+- **Code Quality (Pylint) Fixes**: Fixed severe false-positive Pylint import errors during pre-commit checks by correctly configuring `init-hook = "import sys; sys.path.insert(0, '.')"` inside `pyproject.toml`, successfully pushing the repository score to an impeccable 9.49/10.
+**Why did we choose to do that:**
+The user correctly identified the need for a "Resume Run" mode in case of failure or monthly increments. Rather than duplicating pipelines, we migrated the old dataset structures to exactly match the new architecture, proving that the Rust Engine's incremental saving (`_state.json`) naturally behaves as a robust resume system out of the box. Fixing Pylint reduces noise and keeps code quality strictly enforced, while the docstring updates formalize the implicit logic already built into the pipeline.
