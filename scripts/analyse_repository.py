@@ -1,15 +1,13 @@
 """
 Processes repository snapshots incrementally to track code age distribution.
 
-This script is responsible for the **snapshot generation** step of the Theseus
-data pipeline.  It clones (or fetches) a git repository, walks its commit
-history at quarterly resolution (pre-2025) / monthly resolution (2025+), runs
-``git blame --line-porcelain`` on all tracked files at each snapshot commit,
-and aggregates the results into year-to-line-count distributions.
+This script serves as the core engine of the Ship of Theseus pipeline. Its primary 
+function is to traverse the git history of a repository, take periodic snapshots, and 
+calculate the precise age of every line of code at each given moment.
 
-The output JSON has the standard ``{snapshots, fossils}`` shape where
-``fossils`` is left untouched (preserving any previously computed fossil data).
-Fossil computation is handled separately by ``add_fossils.py``.
+Incremental processing is utilized where possible because executing a full `git blame` 
+across large codebases iteratively is computationally prohibitive. By identifying only 
+the files that changed between snapshots, the pipeline conserves significant processing resources.
 
 Fossil data model
 -----------------
@@ -33,7 +31,7 @@ from collections import defaultdict
 from itertools import groupby
 
 from scripts._blame import BlameRunner
-from scripts._data_io import load_snapshot_data, save_snapshot_data
+from scripts._data_io import load_snapshot_data, save_snapshot_data, load_latest_state, save_latest_state
 
 from scripts._utils import (
     get_default_branch,
@@ -163,15 +161,26 @@ def _verify_line_count_guard(
     """
     Verify blame total against ``wc -l``; fall back to full blame on mismatch.
 
+    Why this safeguard is here:
+    Incremental blame is used to optimize performance, but cache drift can occur due to 
+    file renames, deletions, or dynamically generated files. If the total number of lines 
+    blamed diverges significantly from the physical lines on disk, the cache is no longer 
+    reliable. When this drift is detected, the script invalidates the cache and forces a 
+    full blame for the current snapshot to restore accuracy.
+
     Tolerance is 1 % for repos under 50k lines and 5 % for larger repos.
     Empirical data shows that larger repos (react, zed) regularly see 3-5 %
     mismatch from binary/generated files that blame skips, so the relaxed
     threshold avoids unnecessary full re-blames.
 
     :param repo_path: Path to the git repository.
+    :type repo_path: str
     :param age_distribution: Current ``{year: count}`` estimate.
+    :type age_distribution: dict[str, int]
     :param file_compositions: Current ``{file: {year: count}}``.
+    :type file_compositions: dict[str, dict[str, int]]
     :param max_workers: Maximum parallel blame processes.
+    :type max_workers: int | None
     :return: ``(age_distribution, file_compositions)``, possibly from a full
              re-blame if the check failed.
     """
@@ -257,33 +266,30 @@ def _filter_snapshots(
 
 
 def _find_baseline(
-    historical_snapshots: list[dict], first_new_period: str | None,
+    first_new_period: str | None,
+    state_json_path: str,
+    last_historical_snapshot: dict | None,
 ) -> tuple[str, dict[str, dict[str, int]]] | None:
     """
-    Find the best incremental-blame baseline from historical snapshots.
+    Find the best incremental-blame baseline.
+    
+    If we are appending new snapshots to the end of history, we can use the
+    latest state file. If we are reprocessing an older snapshot, we cannot
+    use the latest state and must fallback to a full blame.
 
-    Uses the most recent snapshot whose ``snapshot_date`` is strictly earlier
-    than *first_new_period*.  Falls back to the newest snapshot when no
-    earlier snapshot exists or when *first_new_period* is ``None``.
-
-    :param historical_snapshots: Existing snapshots on disk.
     :param first_new_period: The ``YYYY-MM`` period of the first new snapshot.
+    :param state_json_path: Path to the ``{repo}_state.json`` file.
+    :param last_historical_snapshot: The latest snapshot currently on disk.
     :return: ``(commit_hash, file_compositions)`` tuple or ``None``.
     """
-    if not historical_snapshots:
+    if not last_historical_snapshot:
         return None
 
-    if first_new_period:
-        for snap in reversed(historical_snapshots):
-            if snap["snapshot_date"] < first_new_period:
-                commit = snap.get("commit_hash", "")
-                comp = snap.get("file_compositions")
-                if commit and comp:
-                    return (commit, comp)
+    if first_new_period and first_new_period <= last_historical_snapshot["snapshot_date"]:
+        # Reprocessing historical data, cannot use latest state.
+        return None
 
-    last_hist = historical_snapshots[-1]
-    commit = last_hist.get("commit_hash", "")
-    comp = last_hist.get("file_compositions")
+    commit, comp = load_latest_state(state_json_path)
     if commit and comp:
         return (commit, comp)
     return None
@@ -296,6 +302,7 @@ def _process_snapshots_by_year(
     historical_snapshots: list[dict],
     output_json_path: str,
     existing_fossils: dict,
+    state_json_path: str,
 ) -> None:
     """
     Process new snapshots year-by-year, writing intermediate results after
@@ -305,13 +312,13 @@ def _process_snapshots_by_year(
     total_new_data = []
 
     first_new_period = new_snapshots[0][0] if new_snapshots else None
-    baseline = _find_baseline(historical_snapshots, first_new_period)
+    last_historical = historical_snapshots[-1] if historical_snapshots else None
+    baseline = _find_baseline(first_new_period, state_json_path, last_historical)
     prev_file_data = baseline
     if prev_file_data:
         logger.info(
-            "[%s] Using incremental blame from %s",
+            "[%s] Using incremental blame from latest state",
             repo_name,
-            historical_snapshots[-1]["snapshot_date"],
         )
 
     for year, year_snapshots in snapshots_by_year:
@@ -348,7 +355,6 @@ def _process_snapshots_by_year(
                 "snapshot_date": period,
                 "commit_hash": commit,
                 "composition": distribution,
-                "file_compositions": file_compositions,
             })
 
         total_new_data.extend(year_data)
@@ -363,6 +369,11 @@ def _process_snapshots_by_year(
         final_snapshots.sort(key=lambda x: x["snapshot_date"])
 
         save_snapshot_data(output_json_path, final_snapshots, existing_fossils)
+        
+        # Save the latest state strictly for the last snapshot we processed
+        if prev_file_data:
+            last_commit, last_comp = prev_file_data
+            save_latest_state(state_json_path, last_commit, last_comp)
 
         logger.info(
             "[%s] Completed year %s in %.2f seconds. Wrote %d snapshots.",
@@ -410,6 +421,7 @@ def process_repository(
     repo_name = repo_slug.split("/")[-1]
     temp_repo_path = f"./temp_workdir_{repo_slug.replace('/', '__')}"
     output_json_path = os.path.join(data_dir, "raw", f"{repo_name}_data.json")
+    state_json_path = os.path.join(data_dir, "state", f"{repo_name}_state.json")
 
     try:
         ensure_repo_ready(repo_slug, repo_name, temp_repo_path)
@@ -438,6 +450,7 @@ def process_repository(
         _process_snapshots_by_year(
             repo_name, temp_repo_path, new_snapshots,
             historical_snapshots, output_json_path, existing_fossils,
+            state_json_path,
         )
 
     finally:

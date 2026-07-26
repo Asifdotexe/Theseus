@@ -1,10 +1,15 @@
 """
 Clean up raw snapshot data and generate processed graph data for the frontend.
 
-Raw data (``data/raw/{name}_data.json``) is cleaned of future-year composition
-entries and minified.  Processed graph data (``data/processed/{name}.json``)
-is stripped of pipeline-internal fields (``commit_hash``, ``file_compositions``)
-so the frontend only sees ``snapshot_date`` + ``composition`` per entry.
+This script acts as the custodian of the data layer. As the analysis pipeline runs, 
+the raw JSON files accumulate metadata, such as legacy file compositions and future-year 
+composition entries, which are no longer required for frontend rendering.
+
+Why do we need this script?
+Serving unoptimized, bloated JSON files degrades the client-side user experience. 
+This script strips out all pipeline-internal fields (like `commit_hash` and `file_compositions`), 
+leaving only the essential `snapshot_date` and `composition` data. It ensures the frontend 
+payload is strictly minimized to what is necessary for chart rendering.
 """
 
 import json
@@ -21,8 +26,12 @@ GRAPH_FIELDS = frozenset({"snapshot_date", "composition"})
 
 
 def _clean_snapshots(snapshots: list[dict]) -> list[dict]:
-    """Remove future-year composition keys from snapshots."""
+    """Remove future-year composition keys and legacy file_compositions from snapshots."""
     for snapshot in snapshots:
+        # Strip legacy file_compositions if present
+        if "file_compositions" in snapshot:
+            del snapshot["file_compositions"]
+            
         snapshot_date = snapshot.get("snapshot_date")
         if snapshot_date:
             max_year = int(snapshot_date[:4])
