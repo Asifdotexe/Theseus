@@ -1,6 +1,6 @@
 # Architecture & internals
 
-The project has a Python script to generate data and a web frontend to display it. They communicate via static JSON files. 
+The project has a Python script to generate data and a web frontend to display it. They communicate via static JSON files.
 
 This setup allows the site to be hosted on static platforms like GitHub Pages.
 
@@ -42,18 +42,18 @@ Fossils are pointers to the oldest lines of code. They are calculated independen
 stateDiagram-v2
     direction LR
     [*] --> ReadManifest
-    
+
     state "Fossil Extractor" as extractor {
         GenesisFossil: Historical Genesis
         SurvivorFossil: Living Survivor
-        
+
         GenesisFossil --> SortCommits
         SortCommits --> ExtractFirstLineFromOldestCommit
-        
+
         SurvivorFossil --> CheckoutHEAD
         CheckoutHEAD --> FindOldestStillAlive
     }
-    
+
     ReadManifest --> extractor
     extractor --> AppendMetadataJSON
 ```
@@ -76,12 +76,12 @@ sequenceDiagram
     participant app.js
     participant config.json
     participant data.json
-    
+
     Browser->>app.js: Load index.html
     app.js->>config.json: fetch("theseus.config.json")
     config.json-->>app.js: Returns [{repo1}, {repo2}]
     app.js->>Browser: Renders UI Selection Grid
-    
+
     Browser->>app.js: Click Repo 1
     app.js->>Browser: Shows CSS Skeleton Loader Overlay
     app.js->>data.json: fetch("data/repo1_data.json")

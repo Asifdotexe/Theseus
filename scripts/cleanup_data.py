@@ -1,14 +1,14 @@
 """
 Clean up raw snapshot data and generate processed graph data for the frontend.
 
-This script acts as the custodian of the data layer. As the analysis pipeline runs, 
-the raw JSON files accumulate metadata, such as legacy file compositions and future-year 
+This script acts as the custodian of the data layer. As the analysis pipeline runs,
+the raw JSON files accumulate metadata, such as legacy file compositions and future-year
 composition entries, which are no longer required for frontend rendering.
 
 Why do we need this script?
-Serving unoptimized, bloated JSON files degrades the client-side user experience. 
-This script strips out all pipeline-internal fields (like `commit_hash`), 
-leaving only the essential `snapshot_date` and `composition` data. It ensures the frontend 
+Serving unoptimized, bloated JSON files degrades the client-side user experience.
+This script strips out all pipeline-internal fields (like `commit_hash`),
+leaving only the essential `snapshot_date` and `composition` data. It ensures the frontend
 payload is strictly minimized to what is necessary for chart rendering.
 """
 
@@ -17,13 +17,13 @@ import logging
 import sys
 from pathlib import Path
 
-from scripts._data_io import load_history, save_history, load_fossils
+from scripts._data_io import load_fossils, load_history, save_history
 from scripts._utils import load_config
 
 logger = logging.getLogger(__name__)
 
-# We use a frozenset here because it provides O(1) constant-time membership lookups 
-# which is slightly faster than a list or tuple, and its immutability guarantees 
+# We use a frozenset here because it provides O(1) constant-time membership lookups
+# which is slightly faster than a list or tuple, and its immutability guarantees
 # that these fields cannot be accidentally modified at runtime.
 GRAPH_FIELDS = frozenset({"snapshot_date", "composition"})
 
@@ -38,7 +38,7 @@ def _clean_snapshots(snapshots: list[dict]) -> list[dict]:
         # Strip legacy file_compositions if present
         if "file_compositions" in snapshot:
             del snapshot["file_compositions"]
-            
+
         snapshot_date = snapshot.get("snapshot_date")
         if snapshot_date:
             max_year = int(snapshot_date[:4])

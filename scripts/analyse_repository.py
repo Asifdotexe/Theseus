@@ -1,12 +1,12 @@
 """
 Processes repository snapshots incrementally to track code age distribution.
 
-This script serves as the core engine of the Ship of Theseus pipeline. Its primary 
-function is to traverse the git history of a repository, take periodic snapshots, and 
+This script serves as the core engine of the Ship of Theseus pipeline. Its primary
+function is to traverse the git history of a repository, take periodic snapshots, and
 calculate the precise age of every line of code at each given moment.
 
-Incremental processing is utilized where possible because executing a full `git blame` 
-across large codebases iteratively is computationally prohibitive. By identifying only 
+Incremental processing is utilized where possible because executing a full `git blame`
+across large codebases iteratively is computationally prohibitive. By identifying only
 the files that changed between snapshots, the pipeline conserves significant processing resources.
 
 Fossil data model
@@ -25,23 +25,18 @@ import argparse
 import concurrent.futures
 import logging
 import os
+import subprocess
 import sys
 import time
 from collections import defaultdict
 from itertools import groupby
 
 from scripts._blame import BlameRunner
-from scripts._data_io import load_history, save_history, load_latest_state, save_latest_state
-
-from scripts._utils import (
-    get_default_branch,
-    count_repo_lines,
-    get_changed_files,
-    get_tracked_files,
-    load_config,
-    remove_path,
-    run_command,
-)
+from scripts._data_io import (load_history, load_latest_state, save_history,
+                              save_latest_state)
+from scripts._utils import (count_repo_lines, get_changed_files,
+                            get_default_branch, get_tracked_files, load_config,
+                            remove_path, run_command)
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +76,6 @@ def get_snapshot_periods(repo_path: str) -> list[tuple[str, str]]:
             filtered[period] = commit_hash
 
     return sorted(filtered.items(), key=lambda x: x[0])
-
-
-
 
 
 def _blame_full_snapshot(
@@ -129,15 +121,15 @@ def _blame_incremental_snapshot(
     file_compositions = {
         k: dict(v) for k, v in prev_compositions.items() if k not in changed_files
     }
-    new_compositions = BlameRunner(
-        repo_path, max_workers
-    ).blame_file_compositions(changed_files)
+    new_compositions = BlameRunner(repo_path, max_workers).blame_file_compositions(
+        changed_files
+    )
     file_compositions.update(new_compositions)
     return file_compositions
 
 
 def _aggregate_file_compositions(
-    file_compositions: dict[str, dict[str, int]]
+    file_compositions: dict[str, dict[str, int]],
 ) -> dict[str, int]:
     """
     Sum per-file ``{year: count}`` maps into a single ``{year: count}``.
@@ -163,8 +155,8 @@ def _verify_line_count_guard(
     fall back to full blame on mismatch.
 
     Why this safeguard is here:
-    Incremental blame is used to optimize performance, but cache drift can occur due to 
-    file renames, deletions, or dynamically generated files. When drift is detected, 
+    Incremental blame is used to optimize performance, but cache drift can occur due to
+    file renames, deletions, or dynamically generated files. When drift is detected,
     the script invalidates the cache and forces a full blame for the current snapshot.
 
     :param repo_path: Path to the git repository.
@@ -262,7 +254,7 @@ def _find_baseline(
 ) -> tuple[str, dict[str, dict[str, int]]] | None:
     """
     Find the best incremental-blame baseline.
-    
+
     If we are appending new snapshots to the end of history, we can use the
     latest state file. If we are reprocessing an older snapshot, we cannot
     use the latest state and must fallback to a full blame.
@@ -275,7 +267,10 @@ def _find_baseline(
     if not last_historical_snapshot:
         return None
 
-    if first_new_period and first_new_period <= last_historical_snapshot["snapshot_date"]:
+    if (
+        first_new_period
+        and first_new_period <= last_historical_snapshot["snapshot_date"]
+    ):
         # Reprocessing historical data, cannot use latest state.
         return None
 
@@ -318,13 +313,20 @@ def _process_snapshots_by_year(
 
         logger.info(
             "[%s] Processing year %s: %d snapshots",
-            repo_name, year, len(year_snapshots_list),
+            repo_name,
+            year,
+            len(year_snapshots_list),
         )
 
         for idx, (period, commit) in enumerate(year_snapshots_list, 1):
             logger.info(
                 "[%s] [%s] Processing %s (%d/%d) — Commit: %s",
-                repo_name, year, period, idx, len(year_snapshots_list), commit[:7],
+                repo_name,
+                year,
+                period,
+                idx,
+                len(year_snapshots_list),
+                commit[:7],
             )
 
             snapshot_start = time.perf_counter()
@@ -337,29 +339,33 @@ def _process_snapshots_by_year(
 
             logger.info(
                 "[%s] [%s] Completed %s in %.2f seconds (%d total lines)",
-                repo_name, year, period, snapshot_elapsed,
+                repo_name,
+                year,
+                period,
+                snapshot_elapsed,
                 sum(distribution.values()),
             )
 
-            year_data.append({
-                "snapshot_date": period,
-                "commit_hash": commit,
-                "composition": distribution,
-            })
+            year_data.append(
+                {
+                    "snapshot_date": period,
+                    "commit_hash": commit,
+                    "composition": distribution,
+                }
+            )
 
         total_new_data.extend(year_data)
         year_elapsed = time.perf_counter() - year_start
 
         new_periods = {s["snapshot_date"] for s in total_new_data}
         existing_filtered = [
-            s for s in historical_snapshots
-            if s["snapshot_date"] not in new_periods
+            s for s in historical_snapshots if s["snapshot_date"] not in new_periods
         ]
         final_snapshots = existing_filtered + total_new_data
         final_snapshots.sort(key=lambda x: x["snapshot_date"])
 
         save_history(output_json_path, final_snapshots)
-        
+
         # Save the latest state strictly for the last snapshot we processed
         if prev_file_data:
             last_commit, last_comp = prev_file_data
@@ -367,7 +373,10 @@ def _process_snapshots_by_year(
 
         logger.info(
             "[%s] Completed year %s in %.2f seconds. Wrote %d snapshots.",
-            repo_name, year, year_elapsed, len(final_snapshots),
+            repo_name,
+            year,
+            year_elapsed,
+            len(final_snapshots),
         )
 
 
@@ -417,26 +426,35 @@ def process_repository(
         ensure_repo_ready(repo_slug, repo_name, temp_repo_path)
 
         import platform
+
         if platform.system() == "Windows":
             cmd = [
-                "cmd.exe", "/c", "run_engine.bat",
-                "--repo-path", temp_repo_path,
-                "--output", output_json_path,
-                "--state", state_json_path,
+                "cmd.exe",
+                "/c",
+                "run_engine.bat",
+                "--repo-path",
+                temp_repo_path,
+                "--output",
+                output_json_path,
+                "--state",
+                state_json_path,
             ]
         else:
             cmd = [
                 "./engine/target/release/engine",
-                "--repo-path", temp_repo_path,
-                "--output", output_json_path,
-                "--state", state_json_path,
+                "--repo-path",
+                temp_repo_path,
+                "--output",
+                output_json_path,
+                "--state",
+                state_json_path,
             ]
-            
+
         if reprocess:
             cmd.extend(["--reprocess", reprocess])
 
         logger.info("[%s] Delegating snapshot analysis to Rust engine...", repo_name)
-        run_command(cmd)
+        subprocess.run(cmd, check=True)
 
     finally:
         remove_path(temp_repo_path)

@@ -26,13 +26,8 @@ from pathlib import Path
 
 from scripts._blame import BlameRunner, _blank_fossil
 from scripts._data_io import load_fossils, save_fossils
-from scripts._utils import (
-    get_default_branch,
-    get_tracked_files,
-    load_config,
-    remove_path,
-    run_command,
-)
+from scripts._utils import (get_default_branch, get_tracked_files, load_config,
+                            remove_path, run_command)
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +151,9 @@ def get_genesis_fossil(repo_path: str | Path) -> dict:
                     fossil["timestamp"] = author_ts
                     fossil["file"] = file_path
                     fossil["content"] = content
-                    fossil["year"] = str(datetime.fromtimestamp(author_ts, timezone.utc).year)
+                    fossil["year"] = str(
+                        datetime.fromtimestamp(author_ts, timezone.utc).year
+                    )
                     fossil["commit"] = commit[:7]
                     fossil["view_commit"] = commit
                     fossil["line"] = i + 1
@@ -308,11 +305,17 @@ def _backfill_one(
 
     logger.info(
         "  Genesis  → %s | %s:%s | %s",
-        genesis.get("year"), genesis.get("file"), genesis.get("line"), genesis.get("commit"),
+        genesis.get("year"),
+        genesis.get("file"),
+        genesis.get("line"),
+        genesis.get("commit"),
     )
     logger.info(
         "  Survivor → %s | %s:%s | %s",
-        survivor.get("year"), survivor.get("file"), survivor.get("line"), survivor.get("commit"),
+        survivor.get("year"),
+        survivor.get("file"),
+        survivor.get("line"),
+        survivor.get("commit"),
     )
 
     save_fossils(str(fossil_file), new_fossils)
@@ -330,7 +333,9 @@ def backfill_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
     :param repo_urls: ``{repo_name: clone_url}`` mapping.
     :return: ``True`` if any errors occurred, ``False`` otherwise.
     """
-    return _process_each_repo(data_dir, repo_urls, _backfill_one, log_prefix="Processing")
+    return _process_each_repo(
+        data_dir, repo_urls, _backfill_one, log_prefix="Processing"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -347,7 +352,9 @@ def _update_survivor_one(
 
     old_identity = _fossil_identity(existing_survivor)
     new_identity = _fossil_identity(new_survivor)
-    metadata_changed = existing_survivor.get("view_commit") != new_survivor.get("view_commit")
+    metadata_changed = existing_survivor.get("view_commit") != new_survivor.get(
+        "view_commit"
+    )
 
     if old_identity == new_identity and not metadata_changed:
         logger.info(
@@ -389,7 +396,9 @@ def update_survivor_fossils(data_dir: str, repo_urls: dict[str, str]) -> bool:
     :param repo_urls: ``{repo_name: clone_url}`` mapping.
     :return: ``True`` if any errors occurred, ``False`` otherwise.
     """
-    return _process_each_repo(data_dir, repo_urls, _update_survivor_one, log_prefix="Checking survivor for")
+    return _process_each_repo(
+        data_dir, repo_urls, _update_survivor_one, log_prefix="Checking survivor for"
+    )
 
 
 def _check_genesis(data_dir: str, repo_name: str) -> str | None:
