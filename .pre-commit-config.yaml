@@ -27,3 +27,9 @@ repos:
         language: system
         types: [python]
         args: ["--rcfile=pyproject.toml"]
+
+      - id: update-index-date
+        name: update-index-date
+        entry: poetry run python scripts/update_index_date.py
+        language: system
+        pass_filenames: false
