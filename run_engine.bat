@@ -12,6 +12,5 @@ set "EXIT_CODE=%errorlevel%"
 popd
 if %EXIT_CODE% neq 0 (
     echo Engine execution failed!
-    pause
     exit /b %EXIT_CODE%
 )

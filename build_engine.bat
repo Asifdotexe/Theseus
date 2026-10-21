@@ -12,8 +12,6 @@ set "EXIT_CODE=%errorlevel%"
 popd
 if %EXIT_CODE% neq 0 (
     echo Build failed! Make sure Rust is installed and in your PATH.
-    pause
     exit /b %EXIT_CODE%
 )
 echo Build successful! The binary is located at engine\target\release\engine.exe
-pause
