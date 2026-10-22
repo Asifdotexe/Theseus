@@ -1,0 +1,1 @@
+{"genesis":{"timestamp":1009260221,"file":"scipy_test/setup.py","content":"#!/usr/bin/env python","year":"2001","commit":"74a4958","view_commit":"74a4958b94e07b2e3218741fb52d32e87308d62e","line":1},"survivor":{"timestamp":1017446578,"file":"numpy/lib/_polynomial_impl.py","content":"def poly(seq_of_zeros):","year":"2002","commit":"0562713","view_commit":"main","line":40}}
