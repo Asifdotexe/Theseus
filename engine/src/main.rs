@@ -675,7 +675,13 @@ fn main() {
         }
     }
 
-    let survivor = if let Some(oldest) = file_candidates.values().min_by_key(|c| c.timestamp) {
+    // Deterministic selection: sort by timestamp, then file path, then line number
+    let survivor = if let Some(oldest) = file_candidates.values().min_by(|a, b| {
+        a.timestamp
+            .cmp(&b.timestamp)
+            .then_with(|| a.file.cmp(&b.file))
+            .then_with(|| a.line.cmp(&b.line))
+    }) {
         Fossil {
             timestamp: oldest.timestamp,
             file: oldest.file.clone(),
