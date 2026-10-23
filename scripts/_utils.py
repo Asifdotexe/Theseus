@@ -12,9 +12,9 @@ import json
 import logging
 import os
 import shutil
+import stat
 import subprocess
 import sys
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -208,5 +208,16 @@ def count_repo_lines(repo_path: str | None = None) -> int:
 
 
 def remove_path(path: str) -> None:
-    """Safely remove a directory tree."""
-    shutil.rmtree(path, ignore_errors=True)
+    """Safely remove a directory tree, handling Windows read-only git files."""
+    def _onexc(func, p, _exc):
+        try:
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+        except OSError:
+            pass
+
+    if os.path.exists(path):
+        try:
+            shutil.rmtree(path, onexc=_onexc)
+        except OSError:
+            shutil.rmtree(path, ignore_errors=True)

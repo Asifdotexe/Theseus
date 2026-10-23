@@ -13,6 +13,7 @@ import os
 import platform
 import subprocess
 import sys
+import tempfile
 import time
 
 from scripts._utils import (get_default_branch, load_config, remove_path,
@@ -23,13 +24,35 @@ logger = logging.getLogger(__name__)
 
 def ensure_repo_ready(repo_slug: str, repo_name: str, temp_repo_path: str) -> None:
     """Clone or fetch the repository so it's ready for analysis."""
-    if not os.path.exists(temp_repo_path):
+    git_head = os.path.join(temp_repo_path, ".git", "HEAD")
+    if not os.path.isfile(git_head):
+        if os.path.exists(temp_repo_path):
+            remove_path(temp_repo_path)
         logger.info("Cloning %s into %s...", repo_slug, temp_repo_path)
         repo_url = f"https://github.com/{repo_slug}.git"
-        run_command(["git", "clone", repo_url, temp_repo_path])
+        run_command(
+            [
+                "git",
+                "-c",
+                "filter.lfs.smudge=",
+                "-c",
+                "filter.lfs.process=",
+                "-c",
+                "filter.lfs.required=false",
+                "clone",
+                repo_url,
+                temp_repo_path,
+            ]
+        )
         return
 
     logger.info("Repository %s already exists locally. Fetching latest...", repo_name)
+    lock_file = os.path.join(temp_repo_path, ".git", "index.lock")
+    if os.path.exists(lock_file):
+        try:
+            os.remove(lock_file)
+        except OSError:
+            pass
     run_command(["git", "fetch", "--all"], cwd=temp_repo_path)
     default_branch = get_default_branch(temp_repo_path)
     if default_branch == "HEAD":
@@ -58,9 +81,12 @@ def process_repository(
     :param reprocess: Optional target ('all', 'last', or 'YYYY-MM') to force re-processing.
     """
     repo_name = repo_slug.split("/")[-1]
-    temp_repo_path = f"./temp_workdir_{repo_slug.replace('/', '__')}"
-    output_json_path = os.path.join(data_dir, "raw", f"{repo_name}_history.jsonl")
-    state_json_path = os.path.join(data_dir, "state", f"{repo_name}_state.json")
+    temp_repo_path = os.path.join(
+        tempfile.gettempdir(), f"theseus_workdir_{repo_slug.replace('/', '__')}"
+    )
+    output_json_path = os.path.abspath(os.path.join(data_dir, "raw", f"{repo_name}_history.jsonl"))
+    state_json_path = os.path.abspath(os.path.join(data_dir, "state", f"{repo_name}_state.json"))
+    fossil_json_path = os.path.abspath(os.path.join(data_dir, "raw", f"{repo_name}_fossils.json"))
 
     try:
         ensure_repo_ready(repo_slug, repo_name, temp_repo_path)
@@ -76,6 +102,8 @@ def process_repository(
                 output_json_path,
                 "--state",
                 state_json_path,
+                "--fossils",
+                fossil_json_path,
             ]
         else:
             cmd = [
@@ -86,6 +114,8 @@ def process_repository(
                 output_json_path,
                 "--state",
                 state_json_path,
+                "--fossils",
+                fossil_json_path,
             ]
 
         if reprocess:
