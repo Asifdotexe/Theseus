@@ -6,12 +6,16 @@ import os
 import sys
 import tempfile
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # pylint: disable=wrong-import-position,import-error
 from scripts._blame import parse_blame_year_counts
 from scripts._data_io import (load_fossils, load_history, load_latest_state,
                               save_fossils, save_history, save_latest_state)
+from scripts.analyse_repository import (ensure_engine_ready,
+                                        get_engine_binary_path,
+                                        is_engine_stale)
 
 
 class TestParseBlameYearCounts:
@@ -213,3 +217,68 @@ class TestHistoryAndStateIO:
             assert loaded_fossils["survivor"]["commit"] == "def5678"
         finally:
             os.unlink(filepath)
+
+
+class TestEngineFreshness:
+    """Tests for engine freshness detection and compilation triggers."""
+
+    def test_binary_missing_is_stale(self):
+        """Verify is_engine_stale returns True when binary does not exist."""
+        assert is_engine_stale("/path/to/nonexistent/engine.exe") is True
+
+    def test_binary_newer_than_sources_is_not_stale(self):
+        """Verify is_engine_stale returns False when binary is newer than all sources."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            engine_dir = os.path.join(temp_dir, "engine")
+            os.makedirs(os.path.join(engine_dir, "src"), exist_ok=True)
+            source_file = os.path.join(engine_dir, "src", "main.rs")
+            with open(source_file, "w", encoding="utf-8") as f:
+                f.write("fn main() {}\n")
+
+            binary_file = os.path.join(temp_dir, "engine.exe")
+            with open(binary_file, "w", encoding="utf-8") as f:
+                f.write("mock binary")
+
+            os.utime(source_file, (1000, 1000))
+            os.utime(binary_file, (2000, 2000))
+
+            assert is_engine_stale(binary_file, engine_dir) is False
+
+    def test_source_newer_than_binary_is_stale(self):
+        """Verify is_engine_stale returns True when a source file is newer than the binary."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            engine_dir = os.path.join(temp_dir, "engine")
+            os.makedirs(os.path.join(engine_dir, "src"), exist_ok=True)
+            source_file = os.path.join(engine_dir, "src", "main.rs")
+            with open(source_file, "w", encoding="utf-8") as f:
+                f.write("fn main() {}\n")
+
+            binary_file = os.path.join(temp_dir, "engine.exe")
+            with open(binary_file, "w", encoding="utf-8") as f:
+                f.write("mock binary")
+
+            os.utime(binary_file, (1000, 1000))
+            os.utime(source_file, (2000, 2000))
+
+            assert is_engine_stale(binary_file, engine_dir) is True
+
+    def test_ensure_engine_ready_builds_when_stale(self):
+        """Verify ensure_engine_ready invokes cargo when engine is stale."""
+        with patch("scripts.analyse_repository.is_engine_stale", return_value=True), \
+             patch("shutil.which", return_value="/mock/cargo"), \
+             patch("subprocess.run") as mock_run:
+            binary_path = ensure_engine_ready()
+            assert binary_path == get_engine_binary_path()
+            assert mock_run.called
+            args, _ = mock_run.call_args
+            assert args[0][0] == "cargo"
+            assert "build" in args[0]
+            assert "--release" in args[0]
+
+    def test_ensure_engine_ready_skips_when_fresh(self):
+        """Verify ensure_engine_ready skips cargo when binary is fresh."""
+        with patch("scripts.analyse_repository.is_engine_stale", return_value=False), \
+             patch("subprocess.run") as mock_run:
+            binary_path = ensure_engine_ready()
+            assert binary_path == get_engine_binary_path()
+            assert not mock_run.called
