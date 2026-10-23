@@ -58,14 +58,17 @@ poetry run python -m scripts.add_fossils --update-survivor
 
 ### Viewing the chart
 
-Open `index.html` in a browser.
+Serve the `public` directory with any local HTTP server (required for ES6 modules) or open `public/index.html`:
 
 ```bash
+# Using Python built-in HTTP server
+python -m http.server 8000 --directory public
+
 # macOS
-open index.html
+open public/index.html
 
 # Windows
-start index.html
+start public/index.html
 ```
 
 ## Documentation

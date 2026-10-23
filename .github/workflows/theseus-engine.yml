@@ -90,6 +90,7 @@ jobs:
         with:
           name: data-${{ matrix.repo }}
           path: |
+            public/data/processed/${{ matrix.repo }}_graph.json
             data/processed/${{ matrix.repo }}_graph.json
             data/state/${{ matrix.repo }}_state.json
             data/.status/${{ matrix.repo }}.json
@@ -126,7 +127,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B chore/monthly-data-update
           rm -rf data/.status
-          git add data/
+          git add data/ public/data/
           if git diff --cached --quiet; then
             echo "No changes, skipping PR creation."
             exit 0
