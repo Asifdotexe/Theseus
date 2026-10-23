@@ -1,5 +1,6 @@
 """
-Tests data integrity and schema validation for Theseus generated JSON files.
+Tests data integrity and schema validation for Theseus generated JSON files
+and frontend assets.
 """
 
 import json
@@ -81,6 +82,45 @@ def test_data_integrity_optimized_schema():
             ), f"Error in {json_file.name}: Fossil '{fossil_type}' missing 'line' field"
 
 
+def test_frontend_assets_modular_and_vendored():
+    """
+    Verify frontend asset modularization, offline D3 vendoring, and
+    zero-cost GitHub issue submission.
+    """
+    root_dir = Path(__file__).resolve().parent.parent
+
+    # 1. D3 vendored locally
+    vendor_d3 = root_dir / "vendor" / "d3.v7.min.js"
+    assert vendor_d3.is_file(), f"Missing vendored D3 library at {vendor_d3}"
+    assert vendor_d3.stat().st_size > 100_000, "Vendored D3 file appears truncated"
+
+    # 2. index.html references local vendor D3 and ES6 module app.js
+    index_html = (root_dir / "index.html").read_text(encoding="utf-8")
+    assert 'src="vendor/d3.v7.min.js"' in index_html, "index.html must load vendored D3 from vendor/"
+    assert "https://d3js.org/d3.v7.min.js" not in index_html, "index.html must not depend on CDN D3"
+    assert '<script type="module" src="app.js"></script>' in index_html, (
+        "index.html must load app.js as an ES6 module"
+    )
+
+    # 3. Modular ES6 scripts exist
+    for mod_name in ["api.js", "chart.js", "ui.js", "app.js"]:
+        mod_path = root_dir / mod_name
+        assert mod_path.is_file(), f"Missing ES6 module: {mod_name}"
+        assert mod_path.stat().st_size > 0, f"Module {mod_name} is empty"
+
+    # 4. Zero-cost repository request path (no Web3Forms access key)
+    app_js = (root_dir / "app.js").read_text(encoding="utf-8")
+    ui_js = (root_dir / "ui.js").read_text(encoding="utf-8")
+    assert "__WEB3FORM_ACCESS_KEY__" not in app_js, "app.js must not contain Web3Forms key placeholder"
+    assert "__WEB3FORM_ACCESS_KEY__" not in ui_js, "ui.js must not contain Web3Forms key placeholder"
+    assert "api.web3forms.com" not in app_js, "app.js must not reference Web3Forms"
+    assert "api.web3forms.com" not in ui_js, "ui.js must not reference Web3Forms"
+    assert "https://github.com/Asifdotexe/Theseus/issues/new" in ui_js, (
+        "ui.js must direct repo requests to pre-filled GitHub issue template"
+    )
+
+
 if __name__ == "__main__":
     test_data_integrity_optimized_schema()
-    print("All optimized data integrity checks passed!")
+    test_frontend_assets_modular_and_vendored()
+    print("All data integrity and frontend asset checks passed!")
