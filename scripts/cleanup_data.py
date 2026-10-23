@@ -96,7 +96,8 @@ def generate_frontend_graph_data(data_dir: str) -> bool:
     raw_path = Path(data_dir) / "raw"
     processed_path = Path(data_dir) / "processed"
     processed_path.mkdir(exist_ok=True)
-    public_processed_path = Path("public") / "data" / "processed"
+    repo_root = Path(__file__).resolve().parent.parent
+    public_processed_path = repo_root / "public" / "data" / "processed"
     public_processed_path.mkdir(parents=True, exist_ok=True)
 
     if not raw_path.exists():

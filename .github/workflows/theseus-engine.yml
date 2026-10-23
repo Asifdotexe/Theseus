@@ -92,6 +92,8 @@ jobs:
           path: |
             public/data/processed/${{ matrix.repo }}_graph.json
             data/processed/${{ matrix.repo }}_graph.json
+            data/raw/${{ matrix.repo }}_history.jsonl
+            data/raw/${{ matrix.repo }}_fossils.json
             data/state/${{ matrix.repo }}_state.json
             data/.status/${{ matrix.repo }}.json
           retention-days: 1

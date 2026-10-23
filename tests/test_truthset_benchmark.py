@@ -14,11 +14,13 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# pylint: disable=wrong-import-position,too-many-statements
+import socket
 import pytest
 
 from scripts._data_io import load_fossils, load_history, load_latest_state
 from scripts._utils import remove_path
-from scripts.analyse_repository import process_repository
+from scripts.analyse_repository import ensure_engine_ready, process_repository
 
 TRUTHSET_REPO = "Asifdotexe/SentimentScoringModel"
 TRUTHSET_NAME = "SentimentScoringModel"
@@ -60,6 +62,13 @@ def test_sentiment_scoring_model_truthset_and_benchmark():
     if not os.path.isfile(binary_path):
         pytest.skip(f"Release engine binary not found at {binary_path}. Run 'cargo build --release' first.")
 
+    try:
+        with socket.create_connection(("github.com", 443), timeout=3):
+            pass
+    except OSError:
+        pytest.skip("Network connection to github.com unavailable; skipping truthset benchmark.")
+
+    ensure_engine_ready()
     temp_dir = tempfile.mkdtemp(prefix="theseus_benchmark_")
 
     try:

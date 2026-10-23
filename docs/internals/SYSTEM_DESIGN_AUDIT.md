@@ -93,10 +93,10 @@ Before refactoring, we must cleanly define the target domain and functional cont
 4. **Derived Entropy Metrics:**
    - **Birth Year:** The founding year of the codebase.
    - **Oldest Living Year:** The earliest year bucket with $>0$ surviving lines at HEAD.
-   - **Foundation Retention Rate:** Percentage of lines from the founding year surviving at HEAD: $\frac{\text{Lines}_{\text{birth}}}{\text{Lines}_{\text{total}}} \times 100$.
+   - **Foundation Retention Rate (Foundation Share):** Percentage of current lines from the founding year surviving at HEAD: $\frac{\text{Lines}_{\text{birth}}}{\text{Lines}_{\text{total}}} \times 100$ (or relative to Genesis: $\frac{\text{Lines}_{\text{birth at HEAD}}}{\text{Lines}_{\text{birth at Genesis}}} \times 100$).
    - **Mean Code Age:** Line-weighted average age of the codebase: $\frac{\sum (\text{Lines}_y \times (\text{Year}_{\text{current}} - y))}{\text{Lines}_{\text{total}}}$.
    - **Peak Preservation Year:** Historical year contributing the largest surviving block of code.
-   - **Greatest Transformation:** Month of the single largest historical drop in original code lines (identifying major rewrites like React 16 Fiber or NumPy 2.0).
+   - **Greatest Transformation Period:** Period of the single largest historical drop in original code lines (identifying major rewrites like React 16 Fiber or NumPy 2.0, reflecting quarterly granularity for pre-2025 snapshots).
 5. **The Two Visualization Lenses:**
    - **Chronological Lens:** Standard stacked area chart displaying the gradual accumulation of new strata over time.
    - **Identity Lens:** Binary stacked view contrasting **Original Foundation Code** (Year 0) against all subsequent **Refactored Code** (Year $1 \dots N$).
@@ -117,26 +117,12 @@ Current Reality:
 
 #### What’s Wrong:
 1. **The Zombie Code:** `scripts/analyse_repository.py` contains 556 lines of code. Approximately **340 lines** (lines 44 to 382) implement functions like `_blame_incremental_snapshot`, `analyze_single_snapshot`, and `_verify_line_count_guard`. **None of them are ever executed.** Line 434 delegates directly to `run_engine.bat` (or `./engine/target/release/engine`). Having 60% of a critical module exist as dead code is confusing and dangerous.
-2. **The State Schema Desynchronization Timebomb:**
-   - Python's `_data_io.py` writes and expects state formatted as:
-     ```json
-     {"commit_hash": "...", "file_compositions": {"path/to/file.py": {"2024": 120}}}
-     ```
-   - Rust's `engine/src/main.rs` (lines 319–321) writes state as a flat dictionary:
-     ```json
-     {"path/to/file.py": {"2024": 120}}
-     ```
-   - On line 206 of `engine/src/main.rs`:
-     ```rust
-     if let Ok(state) = serde_json::from_reader(file) {
-         file_compositions = state;
-     }
-     ```
-     Because serde is expecting `HashMap<String, HashMap<String, u32>>`, if it reads a file formatted by Python (or legacy state with `commit_hash`), **the deserialization silently fails!** `file_compositions` defaults to empty, and the engine silently throws away its cache and re-blames from scratch!
-3. **The `--reprocess` Temporal Corruption Bug:**
-   - In `engine/src/main.rs`, when a user specifies `--reprocess 2024-06`, the engine skips periods $1 \dots \text{2024-05}$ and sets `prev_tree_oid` to `2024-05`.
-   - However, `file_compositions` in memory was loaded from `args.state` (which reflects the **latest state, e.g., 2026-03**).
-   - The engine then diffs `2024-05` to `2024-06`, but applies those changes against the **2026 state**. This causes temporal state corruption.
+2. **The State Schema Desynchronization Timebomb *(Historical - Resolved in Issue #84)*:**
+   - Previously, Python's `_data_io.py` wrote state formatted as `{"commit_hash": "...", "file_compositions": {...}}` while Rust wrote a flat dictionary, causing silent serde deserialization failures.
+   - **Resolution:** `engine/src/main.rs` now shares the unified `StateData` struct with both `commit_hash` and `file_compositions`, verifies state commit match against git history, and logs deserialization warnings explicitly instead of failing silently.
+3. **The `--reprocess` Temporal Corruption Bug *(Historical - Resolved in Issue #84)*:**
+   - Previously, specifying `--reprocess <date>` skipped earlier snapshots while retaining the latest in-memory state file, causing historical diffs to apply against future state.
+   - **Resolution:** The engine now enforces temporal sanity checks: reprocessing an earlier date wipes state from that target date forward and rebuilds history deterministically from the preceding snapshot boundary.
 
 ---
 

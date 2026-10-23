@@ -214,7 +214,9 @@ class TheseusVisualizer {
       console.error(err);
       showError(this.chartError, `Failed to load data for ${repoName}`);
     } finally {
-      showLoading(this.loadingState, this.chartContainer, false);
+      if (!signal.aborted) {
+        showLoading(this.loadingState, this.chartContainer, false);
+      }
     }
   }
 

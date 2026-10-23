@@ -753,6 +753,30 @@ fn main() {
 
     info!("Extracting Survivor fossil at HEAD...");
     let default_branch = get_default_branch_name(&repo);
+    let survivor_view_commit = if let Some((_, last_commit_oid)) = periods.last() {
+        last_commit_oid.to_string()
+    } else {
+        default_branch
+    };
+
+    // If all periods were skipped or state was unavailable, file_compositions might be empty.
+    // In that case, blame tracked files at the last period commit to reconstruct candidates.
+    if file_compositions.is_empty() {
+        if let Some((_, last_commit_oid)) = periods.last() {
+            if let Ok(commit) = repo.find_commit(*last_commit_oid) {
+                if let Ok(tree) = commit.tree() {
+                    if let Ok(files) = get_tracked_files(&repo, &tree) {
+                        let file_list: Vec<String> = files.into_iter().collect();
+                        if !file_list.is_empty() {
+                            let (comps, cands) = process_blame(&repo_path, *last_commit_oid, file_list);
+                            file_compositions.extend(comps);
+                            file_candidates.extend(cands);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // If some files containing lines from the earliest year have not been blamed in this pass
     // (for example, during incremental runs where older unchanged files were cached),
@@ -798,7 +822,7 @@ fn main() {
             content: oldest.content.clone(),
             year: oldest.year.clone(),
             commit: oldest.commit.clone(),
-            view_commit: default_branch,
+            view_commit: survivor_view_commit.clone(),
             line: oldest.line,
         }
     } else {
@@ -808,7 +832,7 @@ fn main() {
             content: String::new(),
             year: String::new(),
             commit: String::new(),
-            view_commit: default_branch,
+            view_commit: survivor_view_commit,
             line: 0,
         }
     };
@@ -847,6 +871,9 @@ fn main() {
             }
         }
     } else {
+        if fossils_path.exists() {
+            let _ = std::fs::remove_file(&fossils_path);
+        }
         error!(
             "Fossils incomplete (genesis file: {:?}, survivor file: {:?}). Omitting fossil output so fallback can execute.",
             genesis.file, survivor.file
