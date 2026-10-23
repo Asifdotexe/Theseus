@@ -91,32 +91,26 @@ def process_repository(
     try:
         ensure_repo_ready(repo_slug, repo_name, temp_repo_path)
 
-        if platform.system() == "Windows":
-            cmd = [
-                "cmd.exe",
-                "/c",
-                "run_engine.bat",
-                "--repo-path",
-                temp_repo_path,
-                "--output",
-                output_json_path,
-                "--state",
-                state_json_path,
-                "--fossils",
-                fossil_json_path,
-            ]
-        else:
-            cmd = [
-                "./engine/target/release/engine",
-                "--repo-path",
-                temp_repo_path,
-                "--output",
-                output_json_path,
-                "--state",
-                state_json_path,
-                "--fossils",
-                fossil_json_path,
-            ]
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        binary_name = "engine.exe" if platform.system() == "Windows" else "engine"
+        binary_path = os.path.join(repo_root, "engine", "target", "release", binary_name)
+
+        if not os.path.isfile(binary_path):
+            logger.info("[%s] Release engine binary not found. Building with cargo...", repo_name)
+            cargo_manifest = os.path.join(repo_root, "engine", "Cargo.toml")
+            subprocess.run(["cargo", "build", "--release", "--manifest-path", cargo_manifest], check=True)
+
+        cmd = [
+            binary_path,
+            "--repo-path",
+            temp_repo_path,
+            "--output",
+            output_json_path,
+            "--state",
+            state_json_path,
+            "--fossils",
+            fossil_json_path,
+        ]
 
         if reprocess:
             cmd.extend(["--reprocess", reprocess])
