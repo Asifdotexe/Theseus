@@ -754,9 +754,10 @@ fn main() {
     info!("Extracting Survivor fossil at HEAD...");
     let default_branch = get_default_branch_name(&repo);
 
-    // If file_candidates is empty (e.g. all periods were skipped from cache),
-    // identify the files holding lines from the earliest year and blame them to locate the survivor.
-    if file_candidates.is_empty() && !file_compositions.is_empty() {
+    // If some files containing lines from the earliest year have not been blamed in this pass
+    // (for example, during incremental runs where older unchanged files were cached),
+    // blame those files at HEAD so their oldest lines are present in file_candidates.
+    if !file_compositions.is_empty() {
         let min_year = file_compositions
             .values()
             .flat_map(|c| c.keys())
@@ -767,13 +768,17 @@ fn main() {
             let oldest_year_str = oldest_year.to_string();
             let candidate_files: Vec<String> = file_compositions
                 .iter()
-                .filter(|(_, comp)| comp.contains_key(&oldest_year_str))
+                .filter(|(f, comp)| {
+                    comp.contains_key(&oldest_year_str) && !file_candidates.contains_key(*f)
+                })
                 .map(|(f, _)| f.clone())
                 .collect();
 
-            if let Some((_, last_commit_oid)) = periods.last() {
-                let (_, cands) = process_blame(&repo_path, *last_commit_oid, candidate_files);
-                file_candidates = cands;
+            if !candidate_files.is_empty() {
+                if let Some((_, last_commit_oid)) = periods.last() {
+                    let (_, cands) = process_blame(&repo_path, *last_commit_oid, candidate_files);
+                    file_candidates.extend(cands);
+                }
             }
         }
     }
@@ -808,15 +813,44 @@ fn main() {
         }
     };
 
-    // Save final fossil records to JSON
-    let fossils_record = FossilsRecord { genesis, survivor };
-    if let Some(parent) = fossils_path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    if let Ok(fossils_file) = std::fs::File::create(&fossils_path) {
-        let writer = std::io::BufWriter::new(fossils_file);
-        let _ = serde_json::to_writer(writer, &fossils_record);
-        info!("Saved fossil records to {:?}", fossils_path);
+    // Check that both fossils are complete with non-empty fields and a valid line number.
+    // If either fossil is an empty placeholder, omit writing the file so the pipeline fallback runs.
+    let is_complete = !genesis.file.is_empty()
+        && !genesis.content.is_empty()
+        && genesis.line > 0
+        && !survivor.file.is_empty()
+        && !survivor.content.is_empty()
+        && survivor.line > 0;
+
+    if is_complete {
+        let fossils_record = FossilsRecord { genesis, survivor };
+        if let Some(parent) = fossils_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        match std::fs::File::create(&fossils_path) {
+            Ok(fossils_file) => {
+                let writer = std::io::BufWriter::new(fossils_file);
+                if let Err(e) = serde_json::to_writer(writer, &fossils_record) {
+                    error!(
+                        "Failed to write fossil records to {:?}: {}",
+                        fossils_path, e
+                    );
+                } else {
+                    info!("Saved fossil records to {:?}", fossils_path);
+                }
+            }
+            Err(e) => {
+                error!(
+                    "Failed to create fossil records file at {:?}: {}",
+                    fossils_path, e
+                );
+            }
+        }
+    } else {
+        error!(
+            "Fossils incomplete (genesis file: {:?}, survivor file: {:?}). Omitting fossil output so fallback can execute.",
+            genesis.file, survivor.file
+        );
     }
 
     info!("Engine finished in {:.2?}", start_overall.elapsed());

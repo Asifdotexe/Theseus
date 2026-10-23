@@ -7,6 +7,7 @@ and execution latency.
 """
 
 import os
+import platform
 import sys
 import tempfile
 import time
@@ -50,6 +51,15 @@ def test_sentiment_scoring_model_truthset_and_benchmark():
     Execute full engine analysis on SentimentScoringModel and verify output
     against the truthset while monitoring execution latency.
     """
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if platform.system() == "Windows":
+        binary_path = os.path.join(repo_root, "engine", "target", "release", "engine.exe")
+    else:
+        binary_path = os.path.join(repo_root, "engine", "target", "release", "engine")
+
+    if not os.path.isfile(binary_path):
+        pytest.skip(f"Release engine binary not found at {binary_path}. Run 'cargo build --release' first.")
+
     temp_dir = tempfile.mkdtemp(prefix="theseus_benchmark_")
 
     try:

@@ -209,7 +209,7 @@ def count_repo_lines(repo_path: str | None = None) -> int:
 
 def remove_path(path: str) -> None:
     """Safely remove a directory tree, handling Windows read-only git files."""
-    def _onerror(func, p, _excinfo):
+    def _onexc(func, p, _exc):
         try:
             os.chmod(p, stat.S_IWRITE)
             func(p)
@@ -218,6 +218,6 @@ def remove_path(path: str) -> None:
 
     if os.path.exists(path):
         try:
-            shutil.rmtree(path, onerror=_onerror)
-        except Exception:
+            shutil.rmtree(path, onexc=_onexc)
+        except OSError:
             shutil.rmtree(path, ignore_errors=True)
