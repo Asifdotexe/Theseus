@@ -1,3 +1,5 @@
+#![allow(clippy::collapsible_if)]
+
 use clap::Parser;
 use log::{error, info};
 use rayon::prelude::*;
@@ -12,32 +14,50 @@ use std::time::Instant;
 use chrono::{TimeZone, Utc};
 use git2::{BlameOptions, DiffFindOptions, DiffOptions, ObjectType, Oid, Repository, Tree};
 
+/// Command-line arguments passed from the Python orchestrator script.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    /// Path to the local git repository clone
     #[arg(short, long)]
     repo_path: PathBuf,
 
+    /// Path to the raw JSONL output file where snapshot lines will be appended
     #[arg(short, long)]
     output: PathBuf,
 
+    /// Path to the JSON state file storing per-file line counts for incremental runs
     #[arg(short, long)]
     state: PathBuf,
 
+    /// Optional explicit path to save fossil discovery records (Genesis and Survivor)
     #[arg(long)]
     fossils: Option<PathBuf>,
 
+    /// Reprocess flag: "all" to recompute everything, "last" for the latest period,
+    /// or "YYYY-MM" to rewind the timeline and reprocess from that date onwards.
     #[arg(long)]
     reprocess: Option<String>,
 }
 
+/// A single snapshot record written to the output JSONL file.
+/// Represents the repository's code age breakdown at a specific monthly or quarterly date.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct SnapshotData {
+    /// Date of the snapshot in "YYYY-MM" format
     snapshot_date: String,
+    /// Full git commit hash of the snapshot
     commit_hash: String,
+    /// Map of calendar year to line count (e.g. { "2023": 1200, "2024": 500 })
     composition: HashMap<String, u32>,
 }
 
+/// Nested map storing line age counts for every single tracked file:
+/// { "src/main.rs": { "2023": 120, "2024": 45 }, "README.md": { "2020": 10 } }
+///
+/// Keeping this map in memory allows incremental updates: if only "src/main.rs"
+/// changed in the next commit, we only re-blame "src/main.rs" and keep
+/// "README.md" untouched.
 type FileCompositions = HashMap<String, HashMap<String, u32>>;
 
 /// Persistent state schema matching Python's `_data_io.py`.
@@ -45,27 +65,43 @@ type FileCompositions = HashMap<String, HashMap<String, u32>>;
 /// incremental analysis does not suffer from silent deserialization failures.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct StateData {
+    /// The git commit hash corresponding to the cached file compositions
     commit_hash: String,
+    /// Map of relative file paths to their year line count breakdowns
     file_compositions: FileCompositions,
 }
 
+/// Represents an ancient line of code discovered in the repository.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Fossil {
+    /// Unix timestamp (in seconds) when the line was authored
     timestamp: i64,
+    /// Relative file path holding this line
     file: String,
+    /// Text content of the code line
     content: String,
+    /// Calendar year when the line was authored (e.g. "2020")
     year: String,
+    /// 7-character short commit hash where the line was introduced
     commit: String,
+    /// Commit hash or default branch name used to view the line on GitHub
     view_commit: String,
+    /// 1-based line number in the file
     line: u32,
 }
 
+/// Pair of Genesis and Survivor fossils saved to the fossils JSON file.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct FossilsRecord {
+    /// Genesis: the first surviving line of code from the root commit
     genesis: Fossil,
+    /// Survivor: the oldest living line of code that still exists at HEAD today
     survivor: Fossil,
 }
 
+/// Candidate line of code identified during the single-pass git blame.
+/// Stored in memory per file until the final snapshot, where the oldest candidate
+/// across the entire repository is chosen as the Survivor fossil.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct FossilCandidate {
     timestamp: i64,
@@ -77,47 +113,62 @@ struct FossilCandidate {
 }
 
 fn get_snapshot_periods(repo_path: &Path) -> Result<Vec<(String, Oid)>, git2::Error> {
+    // Open the local git repository using libgit2
     let repo = Repository::open(repo_path)?;
+    // Revwalk allows us to traverse the commit history graph backwards in time
     let mut revwalk = repo.revwalk()?;
+    // Start walking backwards starting from the current HEAD commit
     revwalk.push_head()?;
+    // Sort commits by commit time, walking in reverse order
     revwalk.set_sorting(git2::Sort::TIME | git2::Sort::REVERSE)?;
 
+    // Map of year-month string (like "2024-06") to the representative commit OID
     let mut periods: HashMap<String, Oid> = HashMap::new();
 
     for oid_res in revwalk {
         let oid = oid_res?;
         let commit = repo.find_commit(oid)?;
+        // We look at committer time rather than author time here because committer time
+        // tells us when this change actually became part of the repository timeline.
         let time = commit.committer().when();
         let datetime = Utc.timestamp_opt(time.seconds(), 0).unwrap();
         let period = datetime.format("%Y-%m").to_string();
 
-        // Overwrites so the LAST commit in chronological order for that month is kept
+        // Inserting overwrites any earlier commit for this month.
+        // Because of the revwalk order, the commit that remains in the map is
+        // the final commit that closed out that month.
         periods.insert(period, oid);
     }
 
     let mut filtered = Vec::new();
+    // For older years, sampling quarterly keeps file sizes tiny while preserving trends
     let quarterly_months = ["03", "06", "09", "12"];
 
     for (period, oid) in periods {
         let year: i32 = period[..4].parse().unwrap_or(0);
         let month = &period[5..7];
 
+        // Keep monthly snapshots for 2025 onwards, but sample quarterly for earlier years
         if year >= 2025 || quarterly_months.contains(&month) {
             filtered.push((period, oid));
         }
     }
 
+    // Sort periods chronologically so we process history in forward order
     filtered.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(filtered)
 }
 
 fn get_tracked_files(repo: &Repository, tree: &Tree) -> Result<HashSet<String>, git2::Error> {
     let mut files = HashSet::new();
+    // A git Tree represents a folder snapshot. We walk through its entries recursively.
     tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
+        // Blobs represent actual file contents (not sub-directories)
         if entry.kind() == Some(ObjectType::Blob) {
             let path = format!("{}{}", root, entry.name().unwrap_or(""));
 
-            // Check if binary or empty
+            // We only track text files with content.
+            // Binaries (like images or compiled artifacts) and empty files are ignored.
             if let Ok(blob) = repo.find_blob(entry.id()) {
                 if !blob.is_binary() && blob.size() > 0 {
                     files.insert(path);
@@ -135,17 +186,19 @@ fn get_changed_files(
     new_tree: &Tree,
 ) -> Result<HashSet<String>, git2::Error> {
     let mut diffopts = DiffOptions::new();
+    // Compare old directory tree to new directory tree directly in memory
     let mut diff = repo.diff_tree_to_tree(Some(old_tree), Some(new_tree), Some(&mut diffopts))?;
 
     // Enable rename and copy detection across snapshot trees.
-    // This allows libgit2 to associate moved or renamed files, avoiding spurious
-    // cache invalidation and keeping blame histories clean across snapshots.
+    // If someone renames a file (e.g. from file.js to file.ts), git recognizes it
+    // instead of seeing a delete followed by an add. This avoids re-blaming unchanged code.
     let mut find_opts = DiffFindOptions::new();
     find_opts.renames(true);
     find_opts.copies(true);
     let _ = diff.find_similar(Some(&mut find_opts));
 
     let mut changed_files = HashSet::new();
+    // Extract only the file names that were modified, added, or renamed
     diff.print(git2::DiffFormat::NameOnly, |delta, _, _| {
         if let Some(path) = delta.new_file().path() {
             if let Some(path_str) = path.to_str() {
@@ -173,30 +226,37 @@ fn process_blame(
     commit_oid: Oid,
     files_to_blame: Vec<String>,
 ) -> (FileCompositions, HashMap<String, FossilCandidate>) {
+    // Process files in parallel across all available CPU cores using Rayon
     let results: Vec<(String, HashMap<String, u32>, Option<FossilCandidate>)> = files_to_blame
         .into_par_iter()
         .map_init(
+            // libgit2 Repository handles are not thread-safe to share across threads.
+            // map_init gives each Rayon worker thread its own private Repository handle.
             || Repository::open(repo_path).ok(),
             |repo_opt, path| {
                 let repo = repo_opt.as_ref()?;
                 let mut opts = BlameOptions::new();
+                // Blame the file as of this specific snapshot commit
                 opts.newest_commit(commit_oid);
 
-                // Enable copy/move tracking within and across commits.
-                // This preserves line ancestry across renames and file migrations.
+                // These flags tell git blame to track lines when they are moved within
+                // the same file, moved between commits, or copied across files.
+                // This prevents line ages from resetting to "today" when code is refactored.
                 opts.track_copies_same_file(true);
                 opts.track_copies_same_commit_moves(true);
                 opts.track_copies_same_commit_copies(true);
                 opts.track_copies_any_commit_copies(true);
 
+                // Run the git blame for this file
                 let blame = repo.blame_file(Path::new(&path), Some(&mut opts)).ok()?;
 
                 let mut year_counts = HashMap::new();
                 let mut hunks_info: Vec<(i64, u32, u32, Oid)> = Vec::new();
 
+                // A blame hunk is a contiguous slice of lines that all came from the same commit
                 for hunk in blame.iter() {
-                    // Use orig_signature() to record true author time rather than committer time.
-                    // This correctly preserves authorship dates for imported, rebased, or squashed commits.
+                    // Use orig_signature() to find when the human author actually wrote this line,
+                    // rather than when someone rebased or committed it later.
                     let sig = hunk.orig_signature().or_else(|| hunk.final_signature());
                     if let Some(sig) = sig {
                         let time = sig.when();
@@ -204,6 +264,7 @@ fn process_blame(
                         let year = datetime.format("%Y").to_string();
                         let lines = hunk.lines_in_hunk() as u32;
 
+                        // Add lines to the year total for this file
                         *year_counts.entry(year).or_insert(0) += lines;
 
                         let commit_id = if hunk.orig_commit_id().is_zero() {
@@ -212,6 +273,8 @@ fn process_blame(
                             hunk.orig_commit_id()
                         };
 
+                        // Store hunk details (timestamp, starting line, line count, commit)
+                        // so we can identify candidate ancient lines for the survivor fossil
                         hunks_info.push((
                             time.seconds(),
                             hunk.final_start_line() as u32,
@@ -221,12 +284,13 @@ fn process_blame(
                     }
                 }
 
-                // Sort hunks ascending by author timestamp to find the oldest non-empty line
+                // Sort hunks by timestamp ascending so the oldest hunk is inspected first
                 hunks_info.sort_by_key(|h| h.0);
 
                 let mut candidate: Option<FossilCandidate> = None;
 
-                // Load file blob at this snapshot to extract the text and 1-based line number
+                // Load the file content at this commit to grab the actual line text.
+                // We read directly from git's object database in memory without touching disk.
                 if let Ok(commit) = repo.find_commit(commit_oid) {
                     if let Ok(tree) = commit.tree() {
                         if let Ok(entry) = tree.get_path(Path::new(&path)) {
@@ -235,18 +299,28 @@ fn process_blame(
                                     if let Ok(content_str) = std::str::from_utf8(blob.content()) {
                                         let file_lines: Vec<&str> = content_str.lines().collect();
 
+                                        // Scan through the lines in the oldest hunk to find
+                                        // the first non-empty line of real code or text.
                                         for (ts, start_line, num_lines, orig_oid) in hunks_info {
                                             let start_idx = (start_line.saturating_sub(1)) as usize;
-                                            let end_idx = (start_idx + num_lines as usize).min(file_lines.len());
+                                            let end_idx = (start_idx + num_lines as usize)
+                                                .min(file_lines.len());
 
-                                            for (offset, line) in file_lines[start_idx..end_idx].iter().enumerate() {
+                                            for (offset, line) in
+                                                file_lines[start_idx..end_idx].iter().enumerate()
+                                            {
                                                 let trimmed = line.trim();
+                                                // Skip blank whitespace lines
                                                 if !trimmed.is_empty() {
-                                                    let datetime = Utc.timestamp_opt(ts, 0).unwrap();
+                                                    let datetime =
+                                                        Utc.timestamp_opt(ts, 0).unwrap();
                                                     let year = datetime.format("%Y").to_string();
                                                     let full_commit = orig_oid.to_string();
-                                                    let short_commit = full_commit[..full_commit.len().min(7)].to_string();
+                                                    let short_commit = full_commit
+                                                        [..full_commit.len().min(7)]
+                                                        .to_string();
 
+                                                    // Found our oldest living line candidate for this file
                                                     candidate = Some(FossilCandidate {
                                                         timestamp: ts,
                                                         file: path.clone(),
@@ -296,6 +370,7 @@ fn process_blame(
 /// examining the first non-empty line of its first alphabetical file reproduces the canonical
 /// Genesis fossil in under 5 milliseconds without checking out the git working directory.
 fn find_genesis_fossil(repo: &Repository) -> Result<Fossil, git2::Error> {
+    // Walk through git history to find the initial commit(s) of the repository
     let mut revwalk = repo.revwalk()?;
     revwalk.push_head()?;
     revwalk.set_sorting(git2::Sort::TIME | git2::Sort::REVERSE)?;
@@ -304,13 +379,15 @@ fn find_genesis_fossil(repo: &Repository) -> Result<Fossil, git2::Error> {
     for oid_res in revwalk {
         let oid = oid_res?;
         let commit = repo.find_commit(oid)?;
+        // A root commit is an initial commit in the repository that has zero parents
         if commit.parent_count() == 0 {
             let author_time = commit.author().when().seconds();
             root_commits.push((oid, author_time));
         }
     }
 
-    // Sort root commits ascending by author timestamp so the oldest root commit is inspected first
+    // If multiple root commits exist (e.g. unrelated project histories merged together),
+    // sort them by author timestamp so the true earliest commit comes first.
     root_commits.sort_by_key(|(_, ts)| *ts);
 
     for (root_oid, author_time) in root_commits {
@@ -318,6 +395,7 @@ fn find_genesis_fossil(repo: &Repository) -> Result<Fossil, git2::Error> {
         let tree = commit.tree()?;
 
         let mut file_entries: Vec<(String, Oid)> = Vec::new();
+        // Collect all file blobs in this root commit tree
         tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
             if entry.kind() == Some(ObjectType::Blob) {
                 let path = format!("{}{}", root, entry.name().unwrap_or(""));
@@ -326,18 +404,21 @@ fn find_genesis_fossil(repo: &Repository) -> Result<Fossil, git2::Error> {
             git2::TreeWalkResult::Ok
         })?;
 
-        // Sort files alphabetically to ensure deterministic fossil selection
+        // Sort files alphabetically to ensure deterministic fossil selection on every run
         file_entries.sort_by(|a, b| a.0.cmp(&b.0));
 
         for (file_path, blob_oid) in file_entries {
             let blob = repo.find_blob(blob_oid)?;
+            // Skip binary blobs and empty files
             if blob.is_binary() || blob.size() == 0 {
                 continue;
             }
 
+            // Inspect the blob text directly from memory without checking out to disk
             if let Ok(content_str) = std::str::from_utf8(blob.content()) {
                 for (line_idx, line) in content_str.lines().enumerate() {
                     let trimmed = line.trim();
+                    // Pick the very first non-empty line as our Genesis fossil
                     if !trimmed.is_empty() {
                         let datetime = Utc.timestamp_opt(author_time, 0).unwrap();
                         let year = datetime.format("%Y").to_string();
@@ -359,28 +440,37 @@ fn find_genesis_fossil(repo: &Repository) -> Result<Fossil, git2::Error> {
         }
     }
 
-    Err(git2::Error::from_str("No non-empty lines found in root commits"))
+    Err(git2::Error::from_str(
+        "No non-empty lines found in root commits",
+    ))
 }
 
 /// Resolves the default branch name of the repository (e.g., "main" or "master").
 fn get_default_branch_name(repo: &Repository) -> String {
+    // First, check the symbolic target of the local HEAD reference
     if let Ok(head) = repo.head() {
         if let Ok(Some(target)) = head.symbolic_target() {
             return target.rsplit('/').next().unwrap_or("main").to_string();
         }
     }
+    // Next, check the remote tracking reference (refs/remotes/origin/HEAD)
     if let Ok(origin_head) = repo.find_reference("refs/remotes/origin/HEAD") {
         if let Ok(Some(target)) = origin_head.symbolic_target() {
             return target.rsplit('/').next().unwrap_or("main").to_string();
         }
     }
+    // Fallback: check if standard branch names "main" or "master" exist
     if repo.find_branch("main", git2::BranchType::Local).is_ok()
-        || repo.find_branch("origin/main", git2::BranchType::Remote).is_ok()
+        || repo
+            .find_branch("origin/main", git2::BranchType::Remote)
+            .is_ok()
     {
         return "main".to_string();
     }
     if repo.find_branch("master", git2::BranchType::Local).is_ok()
-        || repo.find_branch("origin/master", git2::BranchType::Remote).is_ok()
+        || repo
+            .find_branch("origin/master", git2::BranchType::Remote)
+            .is_ok()
     {
         return "master".to_string();
     }
@@ -435,6 +525,7 @@ fn main() {
     let mut is_append = false;
     let mut processed_periods = HashSet::new();
 
+    // Read the output JSONL file to see which snapshot periods we already finished in previous runs
     if reprocess_val != "all" && output_path.exists() {
         is_append = true;
         use std::io::{BufRead, BufReader};
@@ -448,10 +539,10 @@ fn main() {
         }
     }
 
-    // Handle reprocessing:
-    // If "last" is requested, drop only the latest period.
-    // If a specific period like "2023-06" is requested, drop that period and all subsequent periods
-    // so that the timeline remains contiguous and incremental diffs are valid.
+    // Handle the --reprocess flag:
+    // If "last" was requested, remove only the latest period so we recalculate the most recent month.
+    // If a specific period was requested (e.g. "2023-06"), remove that period and all newer periods.
+    // We must drop all newer periods because each period builds incrementally on top of the previous one.
     if reprocess_val == "last" && !processed_periods.is_empty() {
         if let Some(max_period) = processed_periods.iter().max().cloned() {
             processed_periods.remove(&max_period);
@@ -460,7 +551,9 @@ fn main() {
         processed_periods.retain(|p| p.as_str() < reprocess_val);
     }
 
-    // Truncate output file if starting fresh, or rewrite to prune reprocessed lines
+    // Prepare the output file:
+    // If starting completely fresh, delete the old output file.
+    // If reprocessing from an earlier date, keep lines from older periods and drop lines from reprocessed periods.
     if !is_append && output_path.exists() {
         let _ = std::fs::remove_file(&output_path);
     } else if is_append && output_path.exists() {
@@ -505,7 +598,10 @@ fn main() {
                     };
 
                     if can_use_state {
-                        info!("Restoring in-memory state from commit {}", state.commit_hash);
+                        info!(
+                            "Restoring in-memory state from commit {}",
+                            state.commit_hash
+                        );
                         file_compositions = state.file_compositions;
                     } else {
                         info!(
@@ -532,11 +628,13 @@ fn main() {
 
     let start_overall = Instant::now();
 
+    // Iterate through snapshot periods in chronological order (oldest to newest)
     for (idx, (period, commit_oid)) in periods.iter().enumerate() {
         let repo = Repository::open(&repo_path).unwrap();
         let curr_commit = repo.find_commit(*commit_oid).unwrap();
         let curr_tree = curr_commit.tree().unwrap();
 
+        // If this period was already calculated in a previous run, skip it
         if processed_periods.contains(period) {
             info!(
                 "[{}/{}] Period {} already processed. Skipping.",
@@ -548,6 +646,7 @@ fn main() {
             continue;
         }
 
+        // Get the list of all active non-binary files at this snapshot
         let tracked_files = get_tracked_files(&repo, &curr_tree).unwrap();
 
         let files_to_blame = if let Some(old_oid) = prev_tree_oid {
@@ -556,6 +655,7 @@ fn main() {
                 // blame all tracked files to re-establish a sound composition baseline.
                 tracked_files.iter().cloned().collect::<Vec<_>>()
             } else {
+                // Incremental diff: find which files were modified, added, or renamed
                 let old_tree = repo.find_tree(old_oid).unwrap();
                 let changed = get_changed_files(&repo, &old_tree, &curr_tree).unwrap();
 
@@ -570,7 +670,7 @@ fn main() {
                     .collect::<Vec<_>>()
             }
         } else {
-            // No previous tree, blame all tracked files
+            // First snapshot in history: blame all tracked files
             tracked_files.iter().cloned().collect::<Vec<_>>()
         };
 
@@ -583,11 +683,13 @@ fn main() {
         );
 
         let start_blame = Instant::now();
-        let (new_compositions, new_candidates) = process_blame(&repo_path, *commit_oid, files_to_blame);
+        // Blame the changed files in parallel
+        let (new_compositions, new_candidates) =
+            process_blame(&repo_path, *commit_oid, files_to_blame);
         file_compositions.extend(new_compositions);
         file_candidates.extend(new_candidates);
 
-        // Aggregate year distribution
+        // Aggregate line age counts across all files for this snapshot
         let mut age_distribution: HashMap<String, u32> = HashMap::new();
         for f_comp in file_compositions.values() {
             for (year, count) in f_comp {
@@ -603,6 +705,7 @@ fn main() {
             total_lines
         );
 
+        // Build the snapshot record and write it to the output JSONL file
         let snapshot = SnapshotData {
             snapshot_date: period.clone(),
             commit_hash: commit_oid.to_string(),
@@ -612,7 +715,7 @@ fn main() {
         let json = serde_json::to_string(&snapshot).unwrap();
         writeln!(out_file, "{}", json).unwrap();
 
-        // Atomically update state file
+        // Atomically update state file after every snapshot so interrupted runs can resume
         if let Some(parent) = args.state.parent() {
             let _ = fs::create_dir_all(parent);
         }
@@ -675,7 +778,9 @@ fn main() {
         }
     }
 
-    // Deterministic selection: sort by timestamp, then file path, then line number
+    // Deterministic selection: sort by timestamp, then file path, then line number.
+    // This ensures that even if two files have lines created in the exact same commit second,
+    // the chosen survivor fossil is identical across all runs and operating systems.
     let survivor = if let Some(oldest) = file_candidates.values().min_by(|a, b| {
         a.timestamp
             .cmp(&b.timestamp)
@@ -703,6 +808,7 @@ fn main() {
         }
     };
 
+    // Save final fossil records to JSON
     let fossils_record = FossilsRecord { genesis, survivor };
     if let Some(parent) = fossils_path.parent() {
         let _ = fs::create_dir_all(parent);
@@ -737,7 +843,8 @@ mod tests {
         assert!(json_str.contains("\"commit_hash\":\"abcdef1234567890\""));
         assert!(json_str.contains("\"file_compositions\":"));
 
-        let deserialized: StateData = serde_json::from_str(&json_str).expect("Deserialization failed");
+        let deserialized: StateData =
+            serde_json::from_str(&json_str).expect("Deserialization failed");
         assert_eq!(deserialized.commit_hash, "abcdef1234567890");
         assert_eq!(deserialized.file_compositions["src/lib.rs"]["2024"], 100);
         assert_eq!(deserialized.file_compositions["src/lib.rs"]["2025"], 250);
@@ -767,7 +874,8 @@ mod tests {
         };
 
         let json_str = serde_json::to_string(&fossils).expect("Serialization failed");
-        let deserialized: FossilsRecord = serde_json::from_str(&json_str).expect("Deserialization failed");
+        let deserialized: FossilsRecord =
+            serde_json::from_str(&json_str).expect("Deserialization failed");
 
         assert_eq!(deserialized.genesis.file, "README.md");
         assert_eq!(deserialized.genesis.commit, "abc1234");
