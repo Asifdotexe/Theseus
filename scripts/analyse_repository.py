@@ -61,6 +61,7 @@ def process_repository(
     temp_repo_path = f"./temp_workdir_{repo_slug.replace('/', '__')}"
     output_json_path = os.path.join(data_dir, "raw", f"{repo_name}_history.jsonl")
     state_json_path = os.path.join(data_dir, "state", f"{repo_name}_state.json")
+    fossil_json_path = os.path.join(data_dir, "raw", f"{repo_name}_fossils.json")
 
     try:
         ensure_repo_ready(repo_slug, repo_name, temp_repo_path)
@@ -76,6 +77,8 @@ def process_repository(
                 output_json_path,
                 "--state",
                 state_json_path,
+                "--fossils",
+                fossil_json_path,
             ]
         else:
             cmd = [
@@ -86,6 +89,8 @@ def process_repository(
                 output_json_path,
                 "--state",
                 state_json_path,
+                "--fossils",
+                fossil_json_path,
             ]
 
         if reprocess:

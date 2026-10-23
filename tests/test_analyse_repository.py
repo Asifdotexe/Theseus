@@ -10,8 +10,8 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # pylint: disable=wrong-import-position,import-error
 from scripts._blame import parse_blame_year_counts
-from scripts._data_io import (load_history, load_latest_state, save_history,
-                              save_latest_state)
+from scripts._data_io import (load_fossils, load_history, load_latest_state,
+                              save_fossils, save_history, save_latest_state)
 
 
 class TestParseBlameYearCounts:
@@ -176,5 +176,40 @@ class TestHistoryAndStateIO:
             commit, comps = load_latest_state(filepath)
             assert commit is None
             assert comps is None
+        finally:
+            os.unlink(filepath)
+
+    def test_fossils_io(self):
+        """Test saving and loading fossils record with genesis and survivor."""
+        mock_fossils = {
+            "genesis": {
+                "timestamp": 1700000000,
+                "file": "README.md",
+                "content": "# Test Repo",
+                "year": "2023",
+                "commit": "abc1234",
+                "view_commit": "abc1234567890abcdef",
+                "line": 1,
+            },
+            "survivor": {
+                "timestamp": 1700000001,
+                "file": "src/main.rs",
+                "content": "fn main() {}",
+                "year": "2023",
+                "commit": "def5678",
+                "view_commit": "main",
+                "line": 1,
+            },
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            filepath = f.name
+
+        try:
+            save_fossils(filepath, mock_fossils)
+            loaded_fossils = load_fossils(filepath)
+            assert loaded_fossils == mock_fossils
+            assert loaded_fossils["genesis"]["file"] == "README.md"
+            assert loaded_fossils["survivor"]["commit"] == "def5678"
         finally:
             os.unlink(filepath)
