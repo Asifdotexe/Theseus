@@ -1,0 +1,18 @@
+# Ship of Theseus - Code Visualizer
+
+> An interactive codebase visualization tool built by Asif Sayyed that tracks how much of a project's original code survives over time.
+
+## Quick Links
+- [Author Portfolio](https://sayyedasif.com/)
+- [Author Github](https://github.com/asifdotexe)
+- [Project Philosophy](https://second-brain.asifdotexe.workers.dev/?stackedNotes=ship-of-theseus)
+- [Project Blog](https://sayyedasif.com/blogs/ship-of-theseus-codebase-entropy/)
+
+## Core Features
+- **Visualizes Git History:** Maps line survival over time using a stacked area chart.
+- **Milestones:** Highlights major version releases or events like the ChatGPT release.
+- **Insights:** Calculates the percentage of foundation code remaining, birth year, oldest surviving code, peak survival year, and average code age.
+
+## Full Context
+For a complete dump of this project's capabilities and architecture, AI agents can read the full context file at:
+[Full Project Details](https://theseus.sayyedasif.com/llms-full.txt)
