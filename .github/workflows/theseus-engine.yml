@@ -50,13 +50,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-
-      - name: Install Poetry
-        run: pipx install poetry
-
-      - name: Install dependencies
-        run: poetry install --no-interaction --no-root
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
@@ -81,7 +74,7 @@ jobs:
           if [ "${{ inputs.full_fossil_scan }}" != "true" ]; then
             ARGS+=(--update-survivor)
           fi
-          poetry run python -m scripts.run_pipeline --repo "$REPO_NAME" "${ARGS[@]}"
+          python -m scripts.run_pipeline --repo "$REPO_NAME" "${ARGS[@]}"
         timeout-minutes: 120
 
       - name: Save status
@@ -97,10 +90,8 @@ jobs:
         with:
           name: data-${{ matrix.repo }}
           path: |
-            data/raw/${{ matrix.repo }}_history.jsonl
-            data/raw/${{ matrix.repo }}_fossils.json
-            data/state/${{ matrix.repo }}_state.json
             data/processed/${{ matrix.repo }}_graph.json
+            data/state/${{ matrix.repo }}_state.json
             data/.status/${{ matrix.repo }}.json
           retention-days: 1
 
@@ -134,6 +125,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B chore/monthly-data-update
+          rm -rf data/.status
           git add data/
           if git diff --cached --quiet; then
             echo "No changes, skipping PR creation."

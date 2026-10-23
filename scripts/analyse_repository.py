@@ -11,6 +11,7 @@ import concurrent.futures
 import logging
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,62 @@ from scripts._utils import (get_default_branch, load_config, remove_path,
                             run_command)
 
 logger = logging.getLogger(__name__)
+
+
+def get_engine_binary_path() -> str:
+    """Return the expected path to the release engine binary."""
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    binary_name = "engine.exe" if platform.system() == "Windows" else "engine"
+    return os.path.join(repo_root, "engine", "target", "release", binary_name)
+
+
+def is_engine_stale(binary_path: str, engine_dir: str | None = None) -> bool:
+    """Return True if the release binary is missing or older than engine sources."""
+    if not os.path.isfile(binary_path):
+        return True
+    if engine_dir is None:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        engine_dir = os.path.join(repo_root, "engine")
+    if not os.path.isdir(engine_dir):
+        return False
+    binary_mtime = os.path.getmtime(binary_path)
+    for root, dirs, files in os.walk(engine_dir):
+        if "target" in dirs:
+            dirs.remove("target")
+        for file in files:
+            if file.endswith((".rs", ".toml", ".lock")):
+                try:
+                    if os.path.getmtime(os.path.join(root, file)) > binary_mtime:
+                        return True
+                except OSError:
+                    continue
+    return False
+
+
+def ensure_engine_ready() -> str:
+    """
+    Ensure the Rust engine binary is compiled and up-to-date with source code.
+
+    Returns the absolute path to the engine binary.
+    """
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    engine_dir = os.path.join(repo_root, "engine")
+    binary_path = get_engine_binary_path()
+
+    if is_engine_stale(binary_path, engine_dir):
+        if not shutil.which("cargo") and os.path.isfile(binary_path):
+            logger.warning(
+                "Rust engine sources may have changed, but 'cargo' is not found in PATH. Using existing binary."
+            )
+        else:
+            logger.info("Release engine binary missing or stale. Building with cargo...")
+            cargo_manifest = os.path.join(engine_dir, "Cargo.toml")
+            subprocess.run(
+                ["cargo", "build", "--release", "--manifest-path", cargo_manifest],
+                check=True,
+            )
+
+    return binary_path
 
 
 def ensure_repo_ready(repo_slug: str, repo_name: str, temp_repo_path: str) -> None:
@@ -90,33 +147,19 @@ def process_repository(
 
     try:
         ensure_repo_ready(repo_slug, repo_name, temp_repo_path)
+        binary_path = ensure_engine_ready()
 
-        if platform.system() == "Windows":
-            cmd = [
-                "cmd.exe",
-                "/c",
-                "run_engine.bat",
-                "--repo-path",
-                temp_repo_path,
-                "--output",
-                output_json_path,
-                "--state",
-                state_json_path,
-                "--fossils",
-                fossil_json_path,
-            ]
-        else:
-            cmd = [
-                "./engine/target/release/engine",
-                "--repo-path",
-                temp_repo_path,
-                "--output",
-                output_json_path,
-                "--state",
-                state_json_path,
-                "--fossils",
-                fossil_json_path,
-            ]
+        cmd = [
+            binary_path,
+            "--repo-path",
+            temp_repo_path,
+            "--output",
+            output_json_path,
+            "--state",
+            state_json_path,
+            "--fossils",
+            fossil_json_path,
+        ]
 
         if reprocess:
             cmd.extend(["--reprocess", reprocess])
@@ -194,6 +237,8 @@ def main() -> None:
     if args.reprocess:
         logger.info("Re-processing target: %s", args.reprocess)
 
+    ensure_engine_ready()
+
     max_top_level_workers = min(
         len(selected_targets),
         int(os.getenv("MAX_TOP_LEVEL_WORKERS", os.cpu_count() or 1)),
@@ -215,7 +260,7 @@ def main() -> None:
             try:
                 future.result()
                 logger.info("✓ %s completed successfully.", name)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:  # pylint: disable=broad-exception-caught # noqa: BLE001
                 logger.error("Failed to process %s: %s", name, e)
 
     overall_elapsed = time.perf_counter() - overall_start
