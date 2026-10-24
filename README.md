@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/theseus_favicon.png" alt="Ship of Theseus Logo" width="120" />
+  <img src="public/assets/theseus_favicon.png" alt="Ship of Theseus Logo" width="120" />
   <h1>Ship of Theseus</h1>
   <p><i>Does a codebase remain the same if every line is replaced? A monthly pulse on software entropy.</i></p>
   <p>
