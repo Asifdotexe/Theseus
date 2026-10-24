@@ -15,3 +15,7 @@
 {"snapshot_date":"2026-04","commit_hash":"e512ec99188d191b07662fc9f69c5764f750a302","composition":{"2026":3326,"2025":86210}}
 {"snapshot_date":"2026-05","commit_hash":"8bae02d5319c619f84f51476188e5b28b2e5816b","composition":{"2025":85997,"2026":11450}}
 {"snapshot_date":"2026-06","commit_hash":"bdb04fc52421537f63bbcb9685e1c0905689f8f7","composition":{"2025":85997,"2026":11506}}
+{"snapshot_date":"2026-07","commit_hash":"7ef6eec9d9ba84ea6f233f26c45f1df5c5991843","composition":{"2026":16536,"2025":32501}}
+{"snapshot_date":"2026-08","commit_hash":"f275fa282e76c5e5456912268f2c367a7f4f4797","composition":{"2026":17460,"2025":32500}}
+{"snapshot_date":"2026-09","commit_hash":"525d3b35312636cf8c001ecb3df2be0324a48b43","composition":{"2026":60991,"2025":32495}}
+{"snapshot_date":"2026-10","commit_hash":"318b7e6ac4e726e88a4ad326214866a93c373b1b","composition":{"2026":67422,"2025":32495}}
