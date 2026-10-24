@@ -12,6 +12,7 @@ leaving only the essential `snapshot_date` and `composition` data. It ensures th
 payload is strictly minimized to what is necessary for chart rendering.
 """
 
+# pylint: disable=too-many-locals
 import json
 import logging
 import sys
@@ -85,8 +86,9 @@ def generate_frontend_graph_data(data_dir: str) -> bool:
 
     Reads ``data/raw/{name}_history.jsonl``, strips pipeline-internal fields
     (``commit_hash``), and writes
-    ``data/processed/{name}_graph.json`` with only ``snapshot_date`` +
-    ``composition`` per entry plus the fossil block from ``data/raw/{name}_fossils.json``.
+    ``data/processed/{name}_graph.json`` and ``public/data/processed/{name}_graph.json``
+    with only ``snapshot_date`` + ``composition`` per entry plus the fossil block
+    from ``data/raw/{name}_fossils.json``.
 
     :param data_dir: Path to the ``data/`` directory.
     :return: ``True`` if any errors occurred.
@@ -94,6 +96,9 @@ def generate_frontend_graph_data(data_dir: str) -> bool:
     raw_path = Path(data_dir) / "raw"
     processed_path = Path(data_dir) / "processed"
     processed_path.mkdir(exist_ok=True)
+    repo_root = Path(__file__).resolve().parent.parent
+    public_processed_path = repo_root / "public" / "data" / "processed"
+    public_processed_path.mkdir(parents=True, exist_ok=True)
 
     if not raw_path.exists():
         return False
@@ -115,13 +120,13 @@ def generate_frontend_graph_data(data_dir: str) -> bool:
                 if any(k in GRAPH_FIELDS for k in snap)
             ]
 
-            out_path = processed_path / out_name
-            with open(out_path, "w", encoding="utf-8") as f:
-                json.dump(
-                    {"snapshots": graph_snapshots, "fossils": fossils},
-                    f,
-                    separators=(",", ":"),
-                )
+            payload = {"snapshots": graph_snapshots, "fossils": fossils}
+            payload_str = json.dumps(payload, separators=(",", ":"))
+
+            for target_dir in (processed_path, public_processed_path):
+                out_path = target_dir / out_name
+                with open(out_path, "w", encoding="utf-8") as f:
+                    f.write(payload_str)
 
         except OSError as e:
             print(f"  Error: {e}")

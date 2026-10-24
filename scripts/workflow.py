@@ -46,13 +46,13 @@ def build_pr_body(
     Path(out_file).write_text(body, encoding="utf-8")
 
 
-def validate_graph_files(data_dir: str = "data/processed") -> None:
+def validate_graph_files(data_dir: str = "public/data/processed") -> None:
     """Validate all graph JSON files. Exits non-zero on failure."""
     processed_path = Path(data_dir)
-    files = sorted(processed_path.glob("*.json"))
+    files = sorted(processed_path.glob("*.json")) if processed_path.is_dir() else []
 
     if not files:
-        print("No processed files found to validate.")
+        print(f"No processed files found to validate in {processed_path}.")
         sys.exit(1)
 
     errors = 0

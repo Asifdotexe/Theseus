@@ -1,0 +1,32 @@
+version: '3'
+
+tasks:
+  default:
+    desc: Build Theseus engine in release mode
+    cmds:
+      - task: build
+
+  build:
+    desc: Build Theseus Rust engine in release mode
+    cmds:
+      - cargo build --release --manifest-path engine/Cargo.toml
+
+  run:
+    desc: Run Theseus Rust engine with arguments
+    cmds:
+      - cargo run --release --manifest-path engine/Cargo.toml -- {{.CLI_ARGS}}
+
+  test:
+    desc: Run engine unit tests
+    cmds:
+      - cargo test --manifest-path engine/Cargo.toml
+
+  clean:
+    desc: Clean engine build artifacts
+    cmds:
+      - cargo clean --manifest-path engine/Cargo.toml
+
+  pipeline:
+    desc: Run the Theseus data pipeline
+    cmds:
+      - python -m scripts.run_pipeline {{.CLI_ARGS}}

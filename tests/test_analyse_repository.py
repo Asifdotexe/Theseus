@@ -6,13 +6,16 @@ import os
 import sys
 import tempfile
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # pylint: disable=wrong-import-position,import-error
 from scripts._blame import parse_blame_year_counts
-from scripts._data_io import (load_history, load_latest_state, save_history,
-                              save_latest_state)
-from scripts.analyse_repository import _filter_snapshots
+from scripts._data_io import (load_fossils, load_history, load_latest_state,
+                              save_fossils, save_history, save_latest_state)
+from scripts.analyse_repository import (ensure_engine_ready,
+                                        get_engine_binary_path,
+                                        is_engine_stale)
 
 
 class TestParseBlameYearCounts:
@@ -180,40 +183,102 @@ class TestHistoryAndStateIO:
         finally:
             os.unlink(filepath)
 
+    def test_fossils_io(self):
+        """Test saving and loading fossils record with genesis and survivor."""
+        mock_fossils = {
+            "genesis": {
+                "timestamp": 1700000000,
+                "file": "README.md",
+                "content": "# Test Repo",
+                "year": "2023",
+                "commit": "abc1234",
+                "view_commit": "abc1234567890abcdef",
+                "line": 1,
+            },
+            "survivor": {
+                "timestamp": 1700000001,
+                "file": "src/main.rs",
+                "content": "fn main() {}",
+                "year": "2023",
+                "commit": "def5678",
+                "view_commit": "main",
+                "line": 1,
+            },
+        }
 
-class TestFilterSnapshots:
-    """Tests for the snapshot filtering helper."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            filepath = f.name
 
-    def test_filters_out_processed_periods(self):
-        """Test that processed periods are excluded from the result."""
-        all_snaps = [("2020-01", "a"), ("2020-02", "b"), ("2020-03", "c")]
-        processed = {"2020-01", "2020-03"}
-        result = _filter_snapshots(all_snaps, processed)
-        assert result == [("2020-02", "b")]
+        try:
+            save_fossils(filepath, mock_fossils)
+            loaded_fossils = load_fossils(filepath)
+            assert loaded_fossils == mock_fossils
+            assert loaded_fossils["genesis"]["file"] == "README.md"
+            assert loaded_fossils["survivor"]["commit"] == "def5678"
+        finally:
+            os.unlink(filepath)
 
-    def test_returns_all_when_none_processed(self):
-        """Test that when no periods have been processed, all snapshots are returned."""
-        all_snaps = [("2020-01", "a"), ("2020-02", "b")]
-        result = _filter_snapshots(all_snaps, set())
-        assert result == all_snaps
 
-    def test_empty_input(self):
-        """Test that an empty snapshot list returns an empty list."""
-        result = _filter_snapshots([], set())
-        assert result == []
+class TestEngineFreshness:
+    """Tests for engine freshness detection and compilation triggers."""
 
-    def test_reprocess_includes_specific_period(self):
-        """Test that a reprocess period is included even if it was already processed."""
-        all_snaps = [("2020-01", "a"), ("2020-02", "b"), ("2020-03", "c")]
-        processed = {"2020-01", "2020-03"}
-        result = _filter_snapshots(all_snaps, processed, reprocess="2020-01")
-        assert ("2020-01", "a") in result
-        assert ("2020-02", "b") in result
-        assert ("2020-03", "c") not in result
+    def test_binary_missing_is_stale(self):
+        """Verify is_engine_stale returns True when binary does not exist."""
+        assert is_engine_stale("/path/to/nonexistent/engine.exe") is True
 
-    def test_reprocess_with_unprocessed_period(self):
-        """Test that reprocessing an unprocessed period just includes it normally."""
-        all_snaps = [("2020-01", "a"), ("2020-02", "b")]
-        processed = {"2020-02"}
-        result = _filter_snapshots(all_snaps, processed, reprocess="2020-01")
-        assert result == [("2020-01", "a")]
+    def test_binary_newer_than_sources_is_not_stale(self):
+        """Verify is_engine_stale returns False when binary is newer than all sources."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            engine_dir = os.path.join(temp_dir, "engine")
+            os.makedirs(os.path.join(engine_dir, "src"), exist_ok=True)
+            source_file = os.path.join(engine_dir, "src", "main.rs")
+            with open(source_file, "w", encoding="utf-8") as f:
+                f.write("fn main() {}\n")
+
+            binary_file = os.path.join(temp_dir, "engine.exe")
+            with open(binary_file, "w", encoding="utf-8") as f:
+                f.write("mock binary")
+
+            os.utime(source_file, (1000, 1000))
+            os.utime(binary_file, (2000, 2000))
+
+            assert is_engine_stale(binary_file, engine_dir) is False
+
+    def test_source_newer_than_binary_is_stale(self):
+        """Verify is_engine_stale returns True when a source file is newer than the binary."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            engine_dir = os.path.join(temp_dir, "engine")
+            os.makedirs(os.path.join(engine_dir, "src"), exist_ok=True)
+            source_file = os.path.join(engine_dir, "src", "main.rs")
+            with open(source_file, "w", encoding="utf-8") as f:
+                f.write("fn main() {}\n")
+
+            binary_file = os.path.join(temp_dir, "engine.exe")
+            with open(binary_file, "w", encoding="utf-8") as f:
+                f.write("mock binary")
+
+            os.utime(binary_file, (1000, 1000))
+            os.utime(source_file, (2000, 2000))
+
+            assert is_engine_stale(binary_file, engine_dir) is True
+
+    def test_ensure_engine_ready_builds_when_stale(self):
+        """Verify ensure_engine_ready invokes cargo when engine is stale."""
+        with patch("scripts.analyse_repository.is_engine_stale", return_value=True), \
+             patch("shutil.which", return_value="/mock/cargo"), \
+             patch("subprocess.run") as mock_run:
+            binary_path = ensure_engine_ready()
+            assert binary_path == get_engine_binary_path()
+            assert mock_run.called
+            args, _ = mock_run.call_args
+            assert args[0][0] == "cargo"
+            assert "build" in args[0]
+            assert "--release" in args[0]
+
+    def test_ensure_engine_ready_skips_when_fresh(self):
+        """Verify ensure_engine_ready skips cargo when binary is fresh."""
+        with patch("scripts.analyse_repository.is_engine_stale", return_value=False), \
+             patch("subprocess.run") as mock_run:
+            binary_path = ensure_engine_ready()
+            assert binary_path == get_engine_binary_path()
+            assert not mock_run.called
