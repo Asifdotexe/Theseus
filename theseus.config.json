@@ -107,6 +107,12 @@
           "description": "Accidental exposure of source code via npm map files."
         }
       ]
+    },
+    {
+      "name": "fastapi",
+      "repo": "fastapi/fastapi",
+      "description": "FastAPI web framework",
+      "milestones": []
     }
   ]
 }
